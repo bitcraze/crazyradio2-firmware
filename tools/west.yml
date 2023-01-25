@@ -1,0 +1,36 @@
+manifest:
+  self:
+    path: crazyradio2-firmware
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v3.2.0
+      import: false
+      west-commands: scripts/west-commands.yml
+    - name: cmsis
+      remote: zephyrproject-rtos
+      revision: 093de61c2a7d12dc9253daf8692f61f793a9254a
+      path: modules/hal/cmsis
+      groups:
+        - hal
+    - name: hal_nordic
+      remote: zephyrproject-rtos
+      revision: 249199ec5a5c31d170659921048764e96d05cc0e
+      path: modules/hal/nordic
+      groups:
+        - hal
+    - name: tinycbor
+      remote: zephyrproject-rtos
+      revision: 9e1f34bc08123aaad7666d3652aaa839e8178b3b
+      path: modules/lib/tinycbor
+    - name: segger
+      remote: zephyrproject-rtos
+      revision: d4e568a920b4bd087886170a5624c167b2d0665e
+      path: modules/debug/segger
+      groups:
+        - debug

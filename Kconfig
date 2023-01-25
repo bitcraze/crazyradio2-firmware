@@ -1,0 +1,28 @@
+
+menu "Crazyradio 2.0 firmware"
+
+config ESB_PACKET_LOSS_PERCENT
+   int "Percent of generated packet loss, between 0 and 100"
+   range 0 100
+   default 0
+
+config ESB_ACK_LOSS_PERCENT
+   int "Percent of generated ack loss, between 0 and 100"
+   range 0 100
+   default 0
+
+config TARGET_UF2_BOOTLOADER
+   bool "Build U2F file and set proper linker setting to work with the UF2 bootloader"
+   default false
+   select BUILD_OUTPUT_UF2
+
+config FLASH_LOAD_OFFSET
+   default 0x26000 if TARGET_UF2_BOOTLOADER
+
+config USE_DCDC
+   bool
+   depends on SOC_DCDC_NRF52X
+
+endmenu
+
+source "Kconfig.zephyr"

@@ -1,0 +1,15 @@
+# Bitcraze Crazyradio 2.0 board configuration
+
+# Copyright (c) 2022 Bitcraze AB
+# Copyright (c) 2020 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_BITCRAZE_CRAZYRADIO_2
+
+config BOARD
+	default "Bitcraze Crazyradio 2.0"
+
+config BT_CTLR
+	default BT
+
+endif # BOARD_BITCRAZE_CRAZYRADIO_2

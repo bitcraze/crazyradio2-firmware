@@ -1,0 +1,19 @@
+identifier: bitcraze_crazyradio_2
+name: Bitcraze Crazyradio 2.0
+type: mcu
+arch: arm
+ram: 256
+flash: 1024
+toolchain:
+  - zephyr
+  - gnuarmemb
+  - xtools
+supported:
+  - ble
+  - counter
+  - gpio
+  - spi
+  - usb_cdc
+  - usb_device
+  - watchdog
+  - netif:openthread

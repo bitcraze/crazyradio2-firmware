@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -e
+
+scriptDir=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
+
+pushd .
+
+cd $scriptDir/../../
+
+west build -b bitcraze_crazyradio_2
+
+popd
