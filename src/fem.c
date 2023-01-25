@@ -236,6 +236,7 @@ void fem_set_power(uint8_t power) {
 }
 
 static void write_register(uint8_t address, uint8_t value) {
+#if defined(HAL_RADIO_FEM_IS_NRF21540)
 	uint8_t command = 0xC0 | (address & 0x3F);
 
 	struct spi_buf_set buffer = {
@@ -251,9 +252,11 @@ static void write_register(uint8_t address, uint8_t value) {
 	printk("write_register: %x %x\n", address, value);
 
 	spi_write_dt(&spi_dev, &buffer);
+#endif
 }
 
 static uint8_t read_register(uint8_t address) {
+#if defined(HAL_RADIO_FEM_IS_NRF21540)
 	uint8_t command = 0x80 | (address & 0x3F);
 
 	struct spi_buf_set buffer = {
@@ -283,6 +286,9 @@ static uint8_t read_register(uint8_t address) {
 	printk("read_register: %x %x\n", address, data[1]);
 
 	return data[1];
+#else
+	return 0;
+#endif
 }
 
 void fem_set_antenna(uint8_t antenna) {
