@@ -39,7 +39,7 @@ with `pip install adafruit-nrfutil`.
 Then, from within the firmware build folder, a package can be generated and flashed:
 
 ```
-adafruit-nrfutil  dfu genpkg --dev-type 0x0052 --application build/zephyr/zephyr.hex crazyradio2.zip
+adafruit-nrfutil  dfu genpkg --dev-type 0x0052 --application build/zephyr/crazyradio2.hex crazyradio2.zip
 adafruit-nrfutil  dfu serial --package crazyradio2.zip -p /dev/ttyACM0 -b 115200
 ```
 
