@@ -4,7 +4,7 @@ This project contains the source code for the firmware used in the Crazyradio 2.
 
 ## Building and Flashing
 
-See the [building and flashing instructions](./docs/building-and-flashing/build.md) in the docs folder.
+See the [building and flashing instructions](./docs/building-and-flashing/index.md) in the docs folder.
 
 
 ## Official Documentation
