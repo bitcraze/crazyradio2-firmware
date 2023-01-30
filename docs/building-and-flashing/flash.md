@@ -27,3 +27,20 @@ You may get an error message in your file browser as the Crazyradio 2.0 exited t
 
 Note: if you enter bootloader mode again the current firmware will always be named `CURRENT.UF2`, regardless of the
 name of the file you dropped when flashing.
+
+## Flasing with USB serial port
+
+The bootloader also contains a (CDC) USB serial port interface. This allows to flash the firmware from command line
+or from a script which might be helpful during development.
+
+Fashing using the serial port interface requires the `adafruit-nrfutil` command line tool. This tool can be installed
+with `pip install adafruit-nrfutil`.
+
+Then, from within the firmware build folder, a package can be generated and flashed:
+
+```
+adafruit-nrfutil  dfu genpkg --dev-type 0x0052 --application build/zephyr/zephyr.hex crazyradio2.zip
+adafruit-nrfutil  dfu serial --package crazyradio2.zip -p /dev/ttyACM0 -b 115200
+```
+
+In those commands, `/dev/ttyACM0` is the serial port of the Crazyradio bootloader.
