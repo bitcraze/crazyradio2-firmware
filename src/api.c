@@ -30,6 +30,7 @@
 #include "oryx.h"
 #include "contwave.h"
 #include "led.h"
+#include "button.h"
 
 // Utility APIs
 
@@ -89,6 +90,7 @@ static rpc_method_t methods[] = {
 	{.name = "contWave.start", .method = contwave_start_rpc},
 	{.name = "contWave.stop", .method = contwave_stop_rpc},
 	{.name = "led.set", .method = led_set_rpc},
+	{.name = "button.get", .method = button_get_rpc},
 };
 
 rpc_api_t crazyradio2_rpc_api = {

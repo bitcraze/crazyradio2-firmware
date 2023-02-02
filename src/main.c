@@ -78,6 +78,8 @@ void main(void)
 	led_set_red(true);
 	led_set_blue(true);
 
+	button_init();
+
     radio_mode_init();
 
 	fem_init();
