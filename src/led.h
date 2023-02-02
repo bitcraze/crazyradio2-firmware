@@ -24,9 +24,12 @@
 #pragma once
 
 #include <stdbool.h>
+#include "rpc.h"
 
 void led_init();
 
 void led_set_green(bool on);
 void led_set_red(bool on);
 void led_set_blue(bool on);
+
+void led_set_rpc(const rpc_request_t *request, rpc_response_t *response);

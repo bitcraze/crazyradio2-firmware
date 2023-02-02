@@ -29,6 +29,7 @@
 #include "esb.h"
 #include "oryx.h"
 #include "contwave.h"
+#include "led.h"
 
 // Utility APIs
 
@@ -87,6 +88,7 @@ static rpc_method_t methods[] = {
 	{.name = "oryx.scan", .method = oryx_scan_rpc},
 	{.name = "contWave.start", .method = contwave_start_rpc},
 	{.name = "contWave.stop", .method = contwave_stop_rpc},
+	{.name = "led.set", .method = led_set_rpc},
 };
 
 rpc_api_t crazyradio2_rpc_api = {
