@@ -26,3 +26,5 @@
 #include "rpc.h"
 
 void system_read_vcc_rpc(const rpc_request_t *request, rpc_response_t *response);
+
+void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response);

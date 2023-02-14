@@ -93,6 +93,7 @@ static rpc_method_t methods[] = {
 	{.name = "led.set", .method = led_set_rpc},
 	{.name = "button.get", .method = button_get_rpc},
 	{.name = "system.get_vcc", .method = system_read_vcc_rpc},
+	{.name = "system.test_ios", .method = system_test_ios_rpc},
 };
 
 rpc_api_t crazyradio2_rpc_api = {
