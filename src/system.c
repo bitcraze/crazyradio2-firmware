@@ -153,8 +153,8 @@ void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response)
 
     k_sleep(K_MSEC(100));
 
-    float io3_0 = 0;
-    int ret = system_read_io1(&io3_0);
+    float io1_0 = 0;
+    int ret = system_read_io1(&io1_0);
     if (ret < 0) {
         rpc_response_send_errorstr(response, "Failed to read IO1");
         return;
@@ -165,8 +165,8 @@ void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response)
 
     k_sleep(K_MSEC(100));
 
-    float io3_1 = 0;
-    ret = system_read_io1(&io3_1);
+    float io1_1 = 0;
+    ret = system_read_io1(&io1_1);
     if (ret < 0) {
         rpc_response_send_errorstr(response, "Failed to read IO1");
         return;
@@ -177,8 +177,8 @@ void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response)
     CborEncoder array;
     cbor_encoder_create_array(result, &array, 2);
 
-    cbor_encode_float(&array, io3_0);
-    cbor_encode_float(&array, io3_1);
+    cbor_encode_float(&array, io1_0);
+    cbor_encode_float(&array, io1_1);
 
     cbor_encoder_close_container(result, &array);
 
