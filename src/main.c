@@ -84,6 +84,21 @@ void main(void)
 
 	fem_init();
 
+	// Test the FEM
+	printk("Enaabling TX\n");
+	fem_txen_set(true);
+	k_sleep(K_MSEC(10));
+	bool enabled = fem_is_pa_enabled();
+	printk("PA enabled: %d\n", enabled);
+	fem_txen_set(false);
+
+	printk("Enaabling RX\n");
+	fem_rxen_set(true);
+	k_sleep(K_MSEC(10));
+	enabled = fem_is_lna_enabled();
+	printk("LNA enabled: %d\n", enabled);
+	fem_rxen_set(false);
+
     int ret = usb_enable(NULL);
 	if (ret != 0) {
 		LOG_ERR("Failed to enable USB");

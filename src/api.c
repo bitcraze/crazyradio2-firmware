@@ -29,6 +29,7 @@
 #include "esb.h"
 #include "oryx.h"
 #include "contwave.h"
+#include "power_measurement.h"
 #include "led.h"
 #include "button.h"
 #include "system.h"
@@ -90,6 +91,7 @@ static rpc_method_t methods[] = {
 	{.name = "oryx.scan", .method = oryx_scan_rpc},
 	{.name = "contWave.start", .method = contwave_start_rpc},
 	{.name = "contWave.stop", .method = contwave_stop_rpc},
+	{.name = "powerMeasurement.measure_channel", .method = power_measurement_measure_channel_rpc},
 	{.name = "led.set", .method = led_set_rpc},
 	{.name = "button.get", .method = button_get_rpc},
 	{.name = "system.get_vcc", .method = system_read_vcc_rpc},

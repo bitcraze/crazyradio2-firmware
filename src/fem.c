@@ -297,3 +297,18 @@ void fem_set_antenna(uint8_t antenna) {
 	gpio_pin_set_dt(&ant_sel_gpio, antenna);
 #endif
 }
+
+bool fem_is_lna_enabled(void) {
+	uint8_t confreg1 = read_register(0x01);
+	bool enabled = (confreg1 & 0x01) == 0x01;
+
+	return enabled;
+}
+
+bool fem_is_pa_enabled(void) {
+	uint8_t confreg0 = read_register(0x00);
+	bool enabled = (confreg0 & 0x01) == 0x01;
+
+	return enabled;
+}
+

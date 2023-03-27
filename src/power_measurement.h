@@ -23,19 +23,12 @@
 
 #pragma once
 
-#include <stdbool.h>
-#include <stdint.h>
 
-void fem_init(void);
+void power_measurement_init();
+void power_measurement_deinit();
 
-void fem_txen_set(bool enable);
+// RPC methods
+#include "rpc.h"
 
-void fem_rxen_set(bool enable);
-
-void fem_set_power(uint8_t power);
-
-void fem_set_antenna(uint8_t antenna);
-
-bool fem_is_lna_enabled(void);
-
-bool fem_is_pa_enabled(void);
+// rpc method for power_measurement_measure_channel_rpc
+void power_measurement_measure_channel_rpc(const rpc_request_t *request, rpc_response_t *response);
