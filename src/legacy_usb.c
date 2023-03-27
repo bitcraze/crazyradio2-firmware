@@ -86,7 +86,10 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 
 	if (state.datarate != 0 && state.channel <= 100) {
         bool acked = esb_send_packet(&packet, &ack, &rssi);
-        if (acked) {
+        if (ack.length > 32) {
+            LOG_DBG("Got an ack of size %d!", ack.length);
+        }
+        if (acked && ack.length <= 32) {
             static char usb_answer[33];
             usb_answer[0] = 1;
             memcpy(&usb_answer[1], ack.data, ack.length);

@@ -247,6 +247,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
 
         nrf_radio_packetptr_set(NRF_RADIO, packet);
+        ack->length = 0;
         ackBuffer = ack;
 
         // Enable FEM PA
