@@ -1,3 +1,6 @@
+#include <autoconf.h>
+#ifndef CONFIG_LEGACY_USB_PROTOCOL
+
 /**
  * ,---------,       ____  _ __
  * |  ,-^-,  |      / __ )(_) /_______________ _____  ___
@@ -319,3 +322,5 @@ void crusb_send(const struct crusb_message *message) {
 void crusb_receive(struct crusb_message *message) {
 	k_msgq_get(&rx_queue, message, K_FOREVER);
 }
+
+#endif

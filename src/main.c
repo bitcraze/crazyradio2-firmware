@@ -33,6 +33,8 @@
 #include "led.h"
 #include "crusb.h"
 #include "fem.h"
+#include "button.h"
+#include "esb.h"
 
 #include "rpc.h"
 #include "api.h"
@@ -52,6 +54,7 @@ int startHFClock(void)
 	return 0;
 }
 
+#ifndef CONFIG_LEGACY_USB_PROTOCOL
 K_MUTEX_DEFINE(usb_send_buffer_mutex);
 void send_usb_message(char* data, size_t length) {
 	static struct crusb_message message;
@@ -65,6 +68,7 @@ void send_usb_message(char* data, size_t length) {
 	crusb_send(&message);
 	k_mutex_unlock(&usb_send_buffer_mutex);
 }
+#endif
 
 void main(void)
 {
@@ -80,7 +84,11 @@ void main(void)
 
 	button_init();
 
+#ifndef CONFIG_LEGACY_USB_PROTOCOL
     radio_mode_init();
+#else
+	esb_init();
+#endif
 
 	fem_init();
 
@@ -105,6 +113,7 @@ void main(void)
 		return;
 	}
 
+#ifndef CONFIG_LEGACY_USB_PROTOCOL
 	rpc_transport_t usb_transport = {
 		.mtu = USB_MTU,
 		.send = send_usb_message,
@@ -120,4 +129,9 @@ void main(void)
 		rpc_error_t error = rpc_dispatch(&crazyradio2_rpc_api, message.data, message.length, usb_transport, response_buffer);
 		LOG_INF("Dispatching result: %d", error);
     }
+#else
+	while(1) {
+		k_sleep(K_MSEC(1000));
+	}
+#endif
 }

@@ -24,6 +24,18 @@ config USE_DCDC
    bool
    depends on SOC_DCDC_NRF52X
 
+config LEGACY_USB_PROTOCOL
+   bool "Use legacy, Crazyradio (PA), USB protocol"
+   default false
+
+config USB_DEVICE_VID
+   default 0x1915 if LEGACY_USB_PROTOCOL
+   default 0x35F0 if !LEGACY_USB_PROTOCOL
+
+config USB_DEVICE_PID
+   default 0x7777 if LEGACY_USB_PROTOCOL
+   default 0xad20 if !LEGACU_USB_PROTOCOL
+
 endmenu
 
 source "Kconfig.zephyr"
