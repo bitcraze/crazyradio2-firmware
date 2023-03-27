@@ -13,6 +13,13 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
+static struct usb_command {
+    char payload[32];
+    uint32_t length;
+};
+
+K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
+
 // Semaphores that drives the leds in main
 // extern struct k_sem radio_packet_acked;
 // extern struct k_sem radio_packet_lost;
@@ -74,51 +81,16 @@ USBD_CLASS_DESCR_DEFINE(primary, 0) struct usb_crazyradio_config crazyradio_cfg 
 void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 {
     uint32_t bytes_to_read;
-	static struct esbPacket_s packet;
-    static struct esbPacket_s ack;
-    uint8_t rssi;
+    static struct usb_command command;
 
 	usb_read(ep, NULL, 0, &bytes_to_read);
 	LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
-	usb_read(ep, packet.data, bytes_to_read, NULL);
+	usb_read(ep, command.payload, bytes_to_read, NULL);
 
-	packet.length = bytes_to_read;
+	command.length = bytes_to_read;
 
-	if (state.datarate != 0 && state.channel <= 100) {
-        bool acked = esb_send_packet(&packet, &ack, &rssi);
-        if (ack.length > 32) {
-            LOG_DBG("Got an ack of size %d!", ack.length);
-        }
-        if (acked && ack.length <= 32) {
-            static char usb_answer[33];
-            usb_answer[0] = 1;
-            memcpy(&usb_answer[1], ack.data, ack.length);
-        
-            if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
-                LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-            }
+    k_msgq_put(&command_queue, &command, K_FOREVER);
 
-            // k_sem_give(&radio_packet_acked);
-        } else {
-			char no_ack_answer[1] = {0};
-	
-			if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
-				LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-			}
-
-            // k_sem_give(&radio_packet_lost);
-		}
-
-	} else {
-		LOG_DBG("Not sending, radio settings not handled!");
-		char no_ack_answer[1] = {0};
-	
-		if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
-			LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-		}
-
-        // k_sem_give(&radio_packet_lost);
-	}
 }
 
 void crazyradio_in_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
@@ -222,5 +194,65 @@ USBD_CFG_DATA_DEFINE(primary, crazyradio) struct usb_cfg_data crazyradio_config 
 	.num_endpoints = ARRAY_SIZE(ep_cfg),
 	.endpoint = ep_cfg,
 };
+
+#define USB_THREAD_STACK_SIZE 500
+#define USB_THREAD_PRIORITY 5
+
+static void usb_thread(void *, void *, void *);
+
+K_THREAD_DEFINE(usb_tid, USB_THREAD_STACK_SIZE,
+                usb_thread, NULL, NULL, NULL,
+                USB_THREAD_PRIORITY, 0, 0);
+
+static void usb_thread(void *, void *, void *) {
+    static struct usb_command command;
+    static struct esbPacket_s packet;
+    static struct esbPacket_s ack;
+    uint8_t rssi;
+
+    while(1) {
+        k_msgq_get(&command_queue, &command, K_FOREVER);
+
+        memcpy(packet.data, command.payload, command.length);
+        packet.length = command.length;
+
+        if (state.datarate != 0 && state.channel <= 100) {
+            bool acked = esb_send_packet(&packet, &ack, &rssi);
+            if (ack.length > 32) {
+                LOG_DBG("Got an ack of size %d!", ack.length);
+            }
+            if (acked && ack.length <= 32) {
+                static char usb_answer[33];
+                usb_answer[0] = 1;
+                memcpy(&usb_answer[1], ack.data, ack.length);
+            
+                if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
+                    LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                }
+
+                // k_sem_give(&radio_packet_acked);
+            } else {
+                char no_ack_answer[1] = {0};
+        
+                if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
+                    LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                }
+
+                // k_sem_give(&radio_packet_lost);
+            }
+
+        } else {
+            LOG_DBG("Not sending, radio settings not handled!");
+            char no_ack_answer[1] = {0};
+        
+            if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
+                LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+            }
+
+            // k_sem_give(&radio_packet_lost);
+        }
+
+    }
+}
 
 #endif
