@@ -44,6 +44,7 @@ static bool sending;
 static bool timeout;
 static uint8_t pid = 0;
 static struct esbPacket_s * ackBuffer;
+static bool ack_enabled = true;
 
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
@@ -55,28 +56,32 @@ static void radio_isr(void *arg)
         // captured in timer.CC0[2] and timer0.CC[1] is going to be
         // used for the timeout
 
-        // Switch the FEM to receive mode
-        fem_txen_set(false);
-        fem_rxen_set(true);
+        if (ack_enabled) {
+            // Switch the FEM to receive mode
+            fem_txen_set(false);
+            fem_rxen_set(true);
 
-        // Setup ack data address
-        nrf_radio_packetptr_set(NRF_RADIO, ackBuffer);
+            // Setup ack data address
+            nrf_radio_packetptr_set(NRF_RADIO, ackBuffer);
 
-        // Set timeout time
-        uint32_t endTime = nrf_timer_cc_get(NRF_TIMER0, NRF_TIMER_CC_CHANNEL2);
-        nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL1, endTime + 500);
+            // Set timeout time
+            uint32_t endTime = nrf_timer_cc_get(NRF_TIMER0, NRF_TIMER_CC_CHANNEL2);
+            nrf_timer_cc_set(NRF_TIMER0, NRF_TIMER_CC_CHANNEL1, endTime + 500);
 
-        // Configure PPI
-        nrfx_ppi_channel_disable(NRF_PPI_CHANNEL27); // RADIO_END -> T0[2]
-        nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1] (Disables timeout!)
-        nrfx_ppi_channel_enable(NRF_PPI_CHANNEL22);  // T0[1] -> RADIO_DISABLE (Timeout!)
+            // Configure PPI
+            nrfx_ppi_channel_disable(NRF_PPI_CHANNEL27); // RADIO_END -> T0[2]
+            nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1] (Disables timeout!)
+            nrfx_ppi_channel_enable(NRF_PPI_CHANNEL22);  // T0[1] -> RADIO_DISABLE (Timeout!)
 
-        // Disable chaining short, disable will switch off the radio for good
-        nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+            // Disable chaining short, disable will switch off the radio for good
+            nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
 
-        // We are now in receiving mode and there has been not timeout yet
-        sending = false;
-        timeout = false;
+            // We are now in receiving mode and there has been not timeout yet
+            sending = false;
+            timeout = false;
+        } else {
+            k_sem_give(&radioXferDone);
+        }
     } else {
         // Packet received or timeout
         // Disable FEM
@@ -144,6 +149,8 @@ void esb_init()
 
     fem_init();
 
+    ack_enabled = true;
+
     isInit = true;
 }
 
@@ -164,6 +171,10 @@ void esb_deinit()
     k_sem_reset(&radioXferDone);
 
     k_mutex_unlock(&radio_busy);
+}
+
+void esb_set_ack_enabled(bool enabled) {
+    ack_enabled = enabled;
 }
 
 void esb_set_channel(uint8_t channel)
@@ -241,8 +252,10 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         pid++;
 
         nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
-                                        RADIO_SHORTS_END_DISABLE_Msk |
-                                        RADIO_SHORTS_DISABLED_RXEN_Msk);
+                                        RADIO_SHORTS_END_DISABLE_Msk);
+        if (ack_enabled) {
+            nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+        }
         nrf_ppi_channel_enable(NRF_PPI, NRF_PPI_CHANNEL27); // END -> Timer0 Capture[2]
         nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
 
@@ -263,10 +276,11 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         // Drop ack packet ocasionally
         if (CONFIG_ESB_ACK_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_ACK_LOSS_PERCENT) {
             ackLossCounter = 0;
+            k_mutex_unlock(&radio_busy);
             return false;
         }
 
-        bool success = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO);
+        bool success = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
 
         k_mutex_unlock(&radio_busy);
 

@@ -29,9 +29,11 @@ K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
 static struct {
     uint8_t datarate;
 	uint8_t channel;
+    bool ack_enabled;
 } state = {
     .datarate = 2,
 	.channel = 2,
+    .ack_enabled = true,
 };
 
 struct usb_crazyradio_config {
@@ -159,7 +161,10 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 		} else if (setup->bRequest == SET_RADIO_ARC && setup->wLength == 0) {
 			LOG_DBG("Setting radio ARC %d", setup->wValue);
 		} else if (setup->bRequest == ACK_ENABLE && setup->wLength == 0) {
-			LOG_DBG("Setting radio ACK Enable %s", setup->wValue?"true":"false");
+            bool enabled = setup->wValue != 0;
+			LOG_DBG("Setting radio ACK Enable %s", enabled?"true":"false");
+            state.ack_enabled = enabled;
+            esb_set_ack_enabled(enabled);
 		} else if (setup->bRequest == SET_CONT_CARRIER && setup->wLength == 0) {
 			LOG_DBG("Setting radio Continious carrier %s", setup->wValue?"true":"false");
 		} else if (setup->bRequest == SET_MODE && setup->wLength == 0) {
@@ -222,7 +227,9 @@ static void usb_thread(void *, void *, void *) {
             if (ack.length > 32) {
                 LOG_DBG("Got an ack of size %d!", ack.length);
             }
-            if (acked && ack.length <= 32) {
+            if (!state.ack_enabled) {
+                led_pulse_green(K_MSEC(50));
+            } else if (acked && ack.length <= 32) {
                 static char usb_answer[33];
                 usb_answer[0] = 1;
                 memcpy(&usb_answer[1], ack.data, ack.length);

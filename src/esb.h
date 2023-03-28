@@ -28,23 +28,67 @@
 void esb_init();
 void esb_deinit();
 
+/**
+ * @brief Set the radio channel to be used for the next communications
+ * 
+ * The radio frequency will be 2400MHz + \p channel
+ * 
+ * @param channel A channel from 0 to 100
+ */
 void esb_set_channel(uint8_t channel);
 
+/**
+ * @brief Possible radio bitrate
+ */
 typedef enum {
     radioBitrate1M,
     radioBitrate2M
 } esbBitrate_t;
 
+/**
+ * @brief Set if an ack will be received or not
+ * @param enabled True to receive an ack after sending a packer. False to just send.
+ * 
+ * Setting ack_enabled to false is usually done to send broadcast packets
+ */
+void esb_set_ack_enabled(bool enabled);
+
+/**
+ * @brief Set the radio bitrate for the next communications
+ * @param bitrate The bitrate to set
+ */
 void esb_set_bitrate(esbBitrate_t bitrate);
 
+/**
+ * @brief Set the radio address
+ * @param address Radio address
+ */
 void esb_set_address(uint8_t address[5]);
 
+/**
+ * @brief ESB radio packet
+ * 
+ * This structure is a packed structure that contains all data that can be read and written
+ * by the nRF radio hardware. The field \a s1 will be filled up by the esb_send_packet() function.
+ */
 struct esbPacket_s {
     uint8_t length;
     uint8_t s1;
     char data[32];
 } __attribute__((packed));
 
+/**
+ * Send a packet and wait for and received an acknoledgement
+ * 
+ * @param packet ESB packet to send
+ * @param ack Structure that will be filled up with the ESB ack packet
+ * @param rssi Pointer to a u8 that will be filled up with the ACK RSSI
+ * 
+ * @return true if an ack has been properly received, false otherwise. the parameters
+ *         ack and rssi are only filled up if an ack has been recievde.
+ * 
+ * @note This function will always return false if ack_enabled has been set to false.
+*/
 bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi);
 
 // RPC API
