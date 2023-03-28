@@ -184,3 +184,8 @@ void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response)
 
     rpc_response_send(response);
 }
+
+void system_reset_to_uf2(void) {
+  NRF_POWER->GPREGRET = 0x57; // 0xA8 OTA, 0x4e Serial
+  NVIC_SystemReset();         // or sd_nvic_SystemReset();
+}

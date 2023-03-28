@@ -10,6 +10,7 @@
 
 #include "esb.h"
 #include "led.h"
+#include "system.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
@@ -123,6 +124,7 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_CONT_CARRIER  0x20
 #define CHANNEL_SCANN     0x21
 #define SET_MODE          0x22
+#define RESET_TO_BOOTLOADER 0xff
 
 static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 				   int32_t *len, uint8_t **data)
@@ -169,6 +171,8 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 			LOG_DBG("Setting radio Continious carrier %s", setup->wValue?"true":"false");
 		} else if (setup->bRequest == SET_MODE && setup->wLength == 0) {
 			LOG_DBG("Setting radio Mode %d", setup->wValue);
+        } else if (setup->bRequest == RESET_TO_BOOTLOADER && setup->wLength == 0) {
+            system_reset_to_uf2();
 		} else {
 			return -ENOTSUP;
 		}
