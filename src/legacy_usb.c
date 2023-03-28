@@ -9,6 +9,7 @@
 #include <zephyr/usb/bos.h>
 
 #include "esb.h"
+#include "fem.h"
 #include "led.h"
 #include "system.h"
 
@@ -129,6 +130,16 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_MODE          0x22
 #define RESET_TO_BOOTLOADER 0xff
 
+// nRF24 power mapping
+// Those number are currently placeholder
+// Todo: use hardware test results to set approximate values there
+static uint8_t power_mapping[] = {
+    1,   // -18dBm ->  2dBm for CRPA
+    10,  // -12dBm ->  8dBm for CRPA
+    20,  // -6dBm  -> 12dBm for CRPA
+    31,  //  0dBm  -> 20dBm for CRPA
+};
+
 static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 				   int32_t *len, uint8_t **data)
 {
@@ -161,6 +172,9 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 			state.datarate = datarate;
 		} else if (setup->bRequest == SET_RADIO_POWER && setup->wLength == 0) {
 			LOG_DBG("Setting radio power %d", setup->wValue);
+            uint8_t power = MIN(setup->wValue, 3);
+            uint8_t fem_power = power_mapping[power];
+            fem_set_power(fem_power);
 		} else if (setup->bRequest == SET_RADIO_ARD && setup->wLength == 0) {
 			LOG_DBG("Setting radio ARD %d", setup->wValue);
 		} else if (setup->bRequest == SET_RADIO_ARC && setup->wLength == 0) {
