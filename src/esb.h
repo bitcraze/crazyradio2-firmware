@@ -91,13 +91,14 @@ struct esbPacket_s {
  * @param packet ESB packet to send
  * @param ack Structure that will be filled up with the ESB ack packet
  * @param rssi Pointer to a u8 that will be filled up with the ACK RSSI
+ * @param retry Number of retry required to received an ack
  * 
  * @return true if an ack has been properly received, false otherwise. the parameters
  *         ack and rssi are only filled up if an ack has been recievde.
  * 
  * @note This function will always return false if ack_enabled has been set to false.
 */
-bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi);
+bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t *retry);
 
 // RPC API
 #include "rpc.h"

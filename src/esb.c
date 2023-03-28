@@ -176,7 +176,7 @@ void esb_deinit()
 }
 
 void esb_set_arc(int value) {
-    arc = value;
+    arc = value & 0x0f;
 }
 
 void esb_set_ack_enabled(bool enabled) {
@@ -234,7 +234,7 @@ void esb_set_address(uint8_t address[5])
     nrf_radio_prefix0_set(NRF_RADIO, prefix0);
 }
 
-bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi)
+bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t* retry)
 {
     if (!isInit) {
         return false;
@@ -259,7 +259,9 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
 
         bool ack_received = false;
 
-        for (int arc_counter = 0; arc_counter <= arc; arc_counter ++) {
+        int arc_counter = 0;
+
+        do {
             nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
                                         RADIO_SHORTS_END_DISABLE_Msk);
             if (ack_enabled) {
@@ -282,13 +284,17 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
 
             ack_received = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
 
+            arc_counter += 1;
+
             // This test means that ARC will affect broadcast as well: broadcast are going to be send "arc" times
             if (ack_received) {
                 break;
             }
-        }
+
+        } while (arc_counter <= arc);
         
         *rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
+        *retry = arc_counter - 1;
 
         // Drop ack packet ocasionally
         if (CONFIG_ESB_ACK_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_ACK_LOSS_PERCENT) {
@@ -366,7 +372,8 @@ void esb_send_packet_rpc(const rpc_request_t *request, rpc_response_t *response)
 
     // Send packet!
     uint8_t rssi;
-    bool acked = esb_send_packet(&packet, &ackPacket, &rssi);
+    uint8_t arc_counter;
+    bool acked = esb_send_packet(&packet, &ackPacket, &rssi, &arc_counter);
 
     // Report ack
     CborEncoder *result = rpc_response_prepare_result(response);

@@ -220,6 +220,7 @@ static void usb_thread(void *, void *, void *) {
     static struct esbPacket_s packet;
     static struct esbPacket_s ack;
     uint8_t rssi;
+    uint8_t arc_counter;
 
     while(1) {
         k_msgq_get(&command_queue, &command, K_FOREVER);
@@ -228,7 +229,7 @@ static void usb_thread(void *, void *, void *) {
         packet.length = command.length;
 
         if (state.datarate != 0 && state.channel <= 100) {
-            bool acked = esb_send_packet(&packet, &ack, &rssi);
+            bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
             if (ack.length > 32) {
                 LOG_DBG("Got an ack of size %d!", ack.length);
             }
@@ -236,7 +237,7 @@ static void usb_thread(void *, void *, void *) {
                 led_pulse_green(K_MSEC(50));
             } else if (acked && ack.length <= 32) {
                 static char usb_answer[33];
-                usb_answer[0] = 1;
+                usb_answer[0] = (arc_counter & 0x0f) << 4 | (rssi < 64)<<1 | 1;
                 memcpy(&usb_answer[1], ack.data, ack.length);
             
                 if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
