@@ -45,6 +45,7 @@ static bool timeout;
 static uint8_t pid = 0;
 static struct esbPacket_s * ackBuffer;
 static bool ack_enabled = true;
+static int arc = 3;
 
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
@@ -150,6 +151,7 @@ void esb_init()
     fem_init();
 
     ack_enabled = true;
+    arc = 3;
 
     isInit = true;
 }
@@ -171,6 +173,10 @@ void esb_deinit()
     k_sem_reset(&radioXferDone);
 
     k_mutex_unlock(&radio_busy);
+}
+
+void esb_set_arc(int value) {
+    arc = value;
 }
 
 void esb_set_ack_enabled(bool enabled) {
@@ -251,26 +257,37 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         packet->s1 = (pid<<1);
         pid++;
 
-        nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
+        bool ack_received = false;
+
+        for (int arc_counter = 0; arc_counter <= arc; arc_counter ++) {
+            nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
                                         RADIO_SHORTS_END_DISABLE_Msk);
-        if (ack_enabled) {
-            nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+            if (ack_enabled) {
+                nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+            }
+            nrf_ppi_channel_enable(NRF_PPI, NRF_PPI_CHANNEL27); // END -> Timer0 Capture[2]
+            nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
+
+            nrf_radio_packetptr_set(NRF_RADIO, packet);
+            ack->length = 0;
+            ackBuffer = ack;
+
+            // Enable FEM PA
+            fem_txen_set(true);
+
+            sending = true;
+            nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
+
+            k_sem_take(&radioXferDone, K_FOREVER);
+
+            ack_received = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
+
+            // This test means that ARC will affect broadcast as well: broadcast are going to be send "arc" times
+            if (ack_received) {
+                break;
+            }
         }
-        nrf_ppi_channel_enable(NRF_PPI, NRF_PPI_CHANNEL27); // END -> Timer0 Capture[2]
-        nrfx_ppi_channel_enable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
-
-        nrf_radio_packetptr_set(NRF_RADIO, packet);
-        ack->length = 0;
-        ackBuffer = ack;
-
-        // Enable FEM PA
-        fem_txen_set(true);
-
-        sending = true;
-        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
-
-        k_sem_take(&radioXferDone, K_FOREVER);
-
+        
         *rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
 
         // Drop ack packet ocasionally
@@ -280,11 +297,9 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
             return false;
         }
 
-        bool success = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
-
         k_mutex_unlock(&radio_busy);
 
-        return success;
+        return ack_received;
     }
 }
 

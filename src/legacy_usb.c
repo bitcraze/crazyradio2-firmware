@@ -161,7 +161,8 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 		} else if (setup->bRequest == SET_RADIO_ARD && setup->wLength == 0) {
 			LOG_DBG("Setting radio ARD %d", setup->wValue);
 		} else if (setup->bRequest == SET_RADIO_ARC && setup->wLength == 0) {
-			LOG_DBG("Setting radio ARC %d", setup->wValue);
+			LOG_DBG("Setting radio ARC %d", setup->wValue & 0x0f);
+            esb_set_arc(setup->wValue & 0x0f);
 		} else if (setup->bRequest == ACK_ENABLE && setup->wLength == 0) {
             bool enabled = setup->wValue != 0;
 			LOG_DBG("Setting radio ACK Enable %s", enabled?"true":"false");

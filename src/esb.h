@@ -46,6 +46,14 @@ typedef enum {
 } esbBitrate_t;
 
 /**
+ * @brief Set the number of retries if no ack has been received
+ * @param value Number of retries
+ * 
+ * @note This also affects no-ack (ie. broadcast) packets: no-ack packet will always be sent "arc" times in a row
+ */
+void esb_set_arc(int value);
+
+/**
  * @brief Set if an ack will be received or not
  * @param enabled True to receive an ack after sending a packer. False to just send.
  * 
