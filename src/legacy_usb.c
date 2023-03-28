@@ -9,6 +9,7 @@
 #include <zephyr/usb/bos.h>
 
 #include "esb.h"
+#include "led.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
@@ -230,7 +231,7 @@ static void usb_thread(void *, void *, void *) {
                     LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
                 }
 
-                // k_sem_give(&radio_packet_acked);
+                led_pulse_green(K_MSEC(50));
             } else {
                 char no_ack_answer[1] = {0};
         
@@ -238,7 +239,7 @@ static void usb_thread(void *, void *, void *) {
                     LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
                 }
 
-                // k_sem_give(&radio_packet_lost);
+                led_pulse_red(K_MSEC(50));
             }
 
         } else {
@@ -249,7 +250,7 @@ static void usb_thread(void *, void *, void *) {
                 LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
             }
 
-            // k_sem_give(&radio_packet_lost);
+            led_pulse_red(K_MSEC(50));
         }
 
     }

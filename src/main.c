@@ -78,9 +78,9 @@ void main(void)
     startHFClock();
 
     led_init();
-	led_set_green(true);
-	led_set_red(true);
-	led_set_blue(true);
+	led_pulse_green(K_MSEC(500));
+	led_pulse_red(K_MSEC(500));
+	led_pulse_blue(K_MSEC(500));
 
 	button_init();
 

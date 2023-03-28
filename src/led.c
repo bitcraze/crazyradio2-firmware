@@ -65,6 +65,37 @@ void led_set_blue(bool on)
     gpio_pin_set_dt(&blueLed, (int)on);
 }
 
+static void red_timer_expired(struct k_timer *dummy) {
+    led_set_red(false);
+}
+
+static void green_timer_expired(struct k_timer *dummy) {
+    led_set_green(false);
+}
+
+static void blue_timer_expired(struct k_timer *dummy) {
+    led_set_blue(false);
+}
+
+K_TIMER_DEFINE(red_timer, red_timer_expired, NULL);
+K_TIMER_DEFINE(green_timer, green_timer_expired, NULL);
+K_TIMER_DEFINE(blue_timer, blue_timer_expired, NULL);
+
+void led_pulse_red(k_timeout_t time) {
+    led_set_red(true);
+    k_timer_start(&red_timer, time, K_FOREVER);
+}
+
+void led_pulse_green(k_timeout_t time) {
+    led_set_green(true);
+    k_timer_start(&green_timer, time, K_FOREVER);
+}
+
+void led_pulse_blue(k_timeout_t time) {
+    led_set_blue(true);
+    k_timer_start(&blue_timer, time, K_FOREVER);
+}
+
 void led_set_rpc(const rpc_request_t *request, rpc_response_t *response) {
     // Check that the request is an array of 3 elements
     int len=0;

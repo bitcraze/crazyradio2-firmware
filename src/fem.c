@@ -184,10 +184,8 @@ void fem_init() {
 
 	printk("ret: %d, data: %x %x\n", ret, data[0], data[1]);
 
-	if (data[1] == 0x02) {
-		led_set_red(false);
-	} else {
-		led_set_blue(false);
+	if (data[1] != 0x02) {
+		// TODO: Handle FEM communication error!
 	}
 #endif
 }
@@ -209,29 +207,7 @@ void fem_set_power(uint8_t power) {
 	uint8_t tx_gain = power & 0x1f;
 	uint8_t confreg0 = tx_gain << 2;
 
-	// uint8_t read = read_register(0x00);
-
-	if (confreg0 == 0x3C) {
-		led_set_red(true);
-	} else if (confreg0 == 0x40) {
-		led_set_blue(true);
-	} else {
-		led_set_red(false);
-		led_set_blue(false);
-		led_set_green(false);
-	}
-
 	write_register(0x00, confreg0);
-
-
-	uint8_t read = read_register(0x00);
-
-	if (confreg0 == read) {
-		led_set_blue(false);
-	} else {
-		led_set_green(false);
-	}
-
 #endif
 }
 

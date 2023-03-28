@@ -23,6 +23,8 @@
 
 #pragma once
 
+#include <zephyr/kernel.h>
+
 #include <stdbool.h>
 #include "rpc.h"
 
@@ -31,5 +33,9 @@ void led_init();
 void led_set_green(bool on);
 void led_set_red(bool on);
 void led_set_blue(bool on);
+
+void led_pulse_red(k_timeout_t time);
+void led_pulse_green(k_timeout_t time);
+void led_pulse_blue(k_timeout_t time);
 
 void led_set_rpc(const rpc_request_t *request, rpc_response_t *response);
