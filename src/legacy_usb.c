@@ -16,7 +16,7 @@
 LOG_MODULE_REGISTER(usb);
 
 static struct usb_command {
-    char payload[32];
+    char payload[64];
     uint32_t length;
 };
 
@@ -89,6 +89,9 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 
 	usb_read(ep, NULL, 0, &bytes_to_read);
 	LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
+    if (bytes_to_read > 64) {
+        bytes_to_read = 64;
+    }
 	usb_read(ep, command.payload, bytes_to_read, NULL);
 
 	command.length = bytes_to_read;
@@ -225,9 +228,26 @@ static void usb_thread(void *, void *, void *) {
     while(1) {
         k_msgq_get(&command_queue, &command, K_FOREVER);
 
-        memcpy(packet.data, command.payload, command.length);
-        packet.length = command.length;
+        // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
+        // this means that the buffer actually contains 2 packets to send
+        if (!state.ack_enabled && command.length > 32) {
+            // Send the first one right away
+            memcpy(packet.data, command.payload, command.length/2);
+            packet.length = command.length/2;
+            esb_send_packet(&packet, &ack, &rssi, &arc_counter);
 
+            // And prepare the second one to be send by the normal execution flow
+            memcpy(packet.data, &command.payload[command.length/2], command.length/2);
+            packet.length = command.length/2;
+        } else {
+            // Otherwise, cap to 32 bytes and prepare the unicast packets
+            if (command.length > 32) {
+                command.length = 32;
+            }
+            memcpy(packet.data, command.payload, command.length);
+            packet.length = command.length;
+        }
+        
         if (state.datarate != 0 && state.channel <= 100) {
             bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
             if (ack.length > 32) {
