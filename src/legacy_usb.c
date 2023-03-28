@@ -15,22 +15,22 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
-static struct usb_command {
+struct usb_command {
     char payload[64];
     uint32_t length;
 };
 
 K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
 
-// Semaphores that drives the leds in main
-// extern struct k_sem radio_packet_acked;
-// extern struct k_sem radio_packet_lost;
+static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
 
 // state
 static struct {
     uint8_t datarate;
 	uint8_t channel;
     bool ack_enabled;
+    uint8_t scan_result[63];
+    int scan_result_length;
 } state = {
     .datarate = 2,
 	.channel = 2,
@@ -135,7 +135,7 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 	LOG_DBG("Class request: bRequest 0x%x bmRequestType 0x%x len %d",
 		setup->bRequest, setup->bmRequestType, *len);
 	
-	if (setup->bmRequestType == 0x40) {
+	if (USB_REQTYPE_GET_TYPE(setup->bmRequestType) == USB_REQTYPE_TYPE_VENDOR) {
 		
 		if (setup->bRequest == SET_RADIO_CHANNEL && setup->wLength == 0) {
 			LOG_DBG("Setting radio channel %d", setup->wValue);
@@ -173,6 +173,13 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             esb_set_ack_enabled(enabled);
 		} else if (setup->bRequest == SET_CONT_CARRIER && setup->wLength == 0) {
 			LOG_DBG("Setting radio Continious carrier %s", setup->wValue?"true":"false");
+        } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_device(setup)) {
+            uint8_t start = setup->wValue;
+            uint8_t stop = setup->wIndex;
+            fw_scan(start, stop, *data,setup->wLength);
+        } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_host(setup)) {
+            *data = state.scan_result;
+            *len = MIN(state.scan_result_length, setup->wLength);
 		} else if (setup->bRequest == SET_MODE && setup->wLength == 0) {
 			LOG_DBG("Setting radio Mode %d", setup->wValue);
         } else if (setup->bRequest == RESET_TO_BOOTLOADER && setup->wLength == 0) {
@@ -286,6 +293,39 @@ static void usb_thread(void *, void *, void *) {
             led_pulse_red(K_MSEC(50));
         }
 
+    }
+}
+
+static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length) {
+    state.scan_result_length = 0;
+
+    if (stop < start) {
+        return;
+    }
+
+    static struct esbPacket_s packet;
+    static struct esbPacket_s ack;
+    uint8_t rssi;
+    uint8_t retry;
+
+    if (data_length > 32) {
+        data_length = 32;
+    }
+
+    memcpy(packet.data, data, data_length);
+    packet.length = data_length;
+
+    for (int channel = start; channel <= stop; channel++) {
+        esb_set_channel(channel);
+        if (esb_send_packet(&packet, &ack, &rssi, &retry)) {
+            led_pulse_green(K_MSEC(50));
+            state.scan_result[state.scan_result_length++] = channel;
+            if (state.scan_result_length >= 63) {
+                return;
+            }
+        } else {
+            led_pulse_red(K_MSEC(50));
+        }
     }
 }
 
