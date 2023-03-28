@@ -266,9 +266,11 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
             return false;
         }
 
+        bool success = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO);
+
         k_mutex_unlock(&radio_busy);
 
-        return !timeout;
+        return success;
     }
 }
 
