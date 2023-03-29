@@ -23,4 +23,4 @@ jobs:
       with:
         submodules: true
     - name: Build
-      run: docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build -DCONFIG_LEGACY_USB_PROTOCOL=${{ legacy-usb }}
+      run: docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build -DCONFIG_LEGACY_USB_PROTOCOL=${{ matrix.legacy-usb }}
