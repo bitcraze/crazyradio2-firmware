@@ -24,7 +24,7 @@ jobs:
         submodules: true
     - name: Build
       run: |
-        if [ ${{ matrix.mode }} = 'crazyradio2']; then
+        if [ ${{ matrix.mode }} = 'crazyradio2' ]; then
           docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build
         else
           docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build-legacy
