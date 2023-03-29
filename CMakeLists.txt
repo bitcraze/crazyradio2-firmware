@@ -1,11 +1,5 @@
 cmake_minimum_required(VERSION 3.20.0)
 
-# Setting up default configuration
-set($ENV{Zephyr_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/)
-set($ENV{ZEPHYR_BASE} ${CMAKE_CURRENT_SOURCE_DIR}/)
-set(ZEPHYR_TOOLCHAIN_VARIANT cross-compile)
-set(CROSS_COMPILE /usr/bin/arm-none-eabi-)
-
 list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
