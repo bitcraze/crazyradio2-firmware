@@ -16,11 +16,25 @@ jobs:
 
     strategy:
       matrix:
-        legacy-usb: [y, n]
+        mode: [crazyradio2, crazyradio2-CRPA-emulation]
 
     steps:
     - uses: actions/checkout@v3
       with:
         submodules: true
     - name: Build
-      run: docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build -DCONFIG_LEGACY_USB_PROTOCOL=${{ matrix.legacy-usb }}
+      run: |
+        if [ ${{ matrix.mode }} = 'crazyradio2']; then
+          docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build
+        else
+          docker run --rm -v ${PWD}:/module bitcraze/builder ./tools/build/build-legacy
+        fi
+
+        cp build/zephyr/crazyradio2.uf2 ${{ matrix.mode }}.uf2
+        cp build/zephyr/crazyradio2.hex ${{ matrix.mode }}.hex
+    - uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.mode }}
+        path: |
+          ${{ matrix.mode }}.uf2
+          ${{ matrix.mode }}.hex
