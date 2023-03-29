@@ -17,7 +17,7 @@ Open vscode in the crazyradio2-firmware folder and use this launch.json file ins
         {
             "name": "Cortex Debug",
             "cwd": "${workspaceRoot}",
-            "executable": "build/zephyr/zephyr.elf",
+            "executable": "build/zephyr/crazyradio2.elf",
             "request": "launch",
             "type": "cortex-debug",
             "showDevDebugOutput": "false",
