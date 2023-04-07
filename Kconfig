@@ -26,7 +26,7 @@ config USE_DCDC
 
 config LEGACY_USB_PROTOCOL
    bool "Use legacy, Crazyradio (PA), USB protocol"
-   default false
+   default n
 
 config USB_DEVICE_VID
    default 0x1915 if LEGACY_USB_PROTOCOL

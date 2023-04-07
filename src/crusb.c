@@ -39,6 +39,44 @@ LOG_MODULE_REGISTER(usb);
 // Vendor requests
 #define CRUSB_VERSION_REQUEST (0)
 
+
+// MS OS 1.0 descriptors to automatically install WinUSB on Windows
+static const uint8_t msos1_compatid_descriptor[] = {
+	/* See https://github.com/pbatard/libwdi/wiki/WCID-Devices */
+	/* MS OS 1.0 header section */
+	0x28, 0x00, 0x00, 0x00, /* Descriptor size (40 bytes)          */
+	0x00, 0x01,             /* Version 1.00                        */
+	0x04, 0x00,             /* Type: Extended compat ID descriptor */
+	0x01,                   /* Number of function sections         */
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,       /* reserved    */
+
+	/* MS OS 1.0 function section */
+	0x02,     /* Index of interface this section applies to. */
+	0x01,     /* reserved */
+	/* 8-byte compatible ID string, then 8-byte sub-compatible ID string */
+	'W',  'I',  'N',  'U',  'S',  'B',  0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00 /* reserved */
+};
+
+#define MSOS_STRING_LENGTH	18
+static struct string_desc {
+	uint8_t bLength;
+	uint8_t bDescriptorType;
+	uint8_t bString[MSOS_STRING_LENGTH];
+
+} __packed msos1_string_descriptor = {
+	.bLength = MSOS_STRING_LENGTH,
+	.bDescriptorType = USB_DESC_STRING,
+	/* Signature MSFT100 */
+	.bString = {
+		'M', 0x00, 'S', 0x00, 'F', 0x00, 'T', 0x00,
+		'1', 0x00, '0', 0x00, '0', 0x00,
+		0x03, /* Vendor Code, used for a control request */
+		0x00, /* Padding byte for VendorCode looks like UTF16 */
+	},
+};
+
 // Message queues
 K_MSGQ_DEFINE(tx_queue, sizeof(struct crusb_message), 5, 4);
 K_MSGQ_DEFINE(rx_queue, sizeof(struct crusb_message), 5, 4);
@@ -283,10 +321,40 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 		*len = setup->wLength;
 		*data[0] = CRUSB_VERSION;
 		return 0;
+	}  else if (setup->bRequest == 0x03 && setup->wIndex == 0x04) {
+		/* Get MS OS 1.0 Descriptors request */
+		/* 0x04 means "Extended compat ID".
+		 * Use 0x05 instead for "Extended properties".
+		 */
+		*data = (uint8_t *)(&msos1_compatid_descriptor);
+		*len = sizeof(msos1_compatid_descriptor);
 
+		LOG_DBG("Get MS OS Descriptors CompatibleID");
+
+		return 0;
 	}
 
 	return -ENOTSUP;
+}
+
+int custom_handle_req(struct usb_setup_packet *pSetup,
+		      int32_t *len, uint8_t **data)
+{
+	if (usb_reqtype_is_to_device(pSetup)) {
+		return -ENOTSUP;
+	}
+
+	if (USB_GET_DESCRIPTOR_TYPE(pSetup->wValue) == USB_DESC_STRING &&
+	    USB_GET_DESCRIPTOR_INDEX(pSetup->wValue) == 0xEE) {
+		*data = (uint8_t *)(&msos1_string_descriptor);
+		*len = sizeof(msos1_string_descriptor);
+
+		LOG_DBG("Get MS OS Descriptor v1 string");
+
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 void crazyradio_status_cb(struct usb_cfg_data * data, enum usb_dc_status_code cb_status, const uint8_t *param)
@@ -306,7 +374,7 @@ USBD_CFG_DATA_DEFINE(primary, crazyradio) struct usb_cfg_data crazyradio_config 
 	.cb_usb_status = crazyradio_status_cb,
 	.interface = {
 		.class_handler = NULL,
-		.custom_handler = NULL,
+		.custom_handler = custom_handle_req,
 		.vendor_handler = crazyradio_vendor_handler,
 	},
 	.num_endpoints = ARRAY_SIZE(ep_cfg),
