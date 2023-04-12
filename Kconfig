@@ -36,6 +36,10 @@ config USB_DEVICE_PID
    default 0x7777 if LEGACY_USB_PROTOCOL
    default 0xad20 if !LEGACU_USB_PROTOCOL
 
+config CBOR_API_NOTIFY_TEST
+   bool "Enable test notification message. Useful to develop CBOR API."
+   default n
+
 endmenu
 
 source "Kconfig.zephyr"

@@ -125,3 +125,98 @@ Stop transmitting the continuous wave
 
 Can return the following errors:
  - `"NotInitialized"`: contWave module not enabled in the [radio mode](#radio-mode-switch) module.
+
+## Radio power measurement
+
+The `powerMeasurement` radio mode allows to measure the amount of radio power seen on one channe.
+It needs to be enabled as a radio mode before being used.
+
+### powerMeasurement.measure_channel
+
+Measure the radio power on a channel and return it
+
+ - Request parameters: `[channel(uint)]`
+ - Response result: `rssi(int)`
+
+Parameters:
+ - **channel**: Channel to measure on. The measurement will be carried on 2400+channel MHz.
+
+Result:
+ - **rssi**: Receive power as reported by the radio hardware.
+             Needs to be negated to get the rssi in dBm. 
+             For example `48` represents `-48 dBm`.
+             The valid range of measurement is 20 to 90 (ie. -90 dBm to -20 bBm).
+
+Can return the following errors:
+ - `"NotInitialized"`: powerMeasurement module not enabled in the [radio mode](#radio-mode-switch) module.
+ - `"BadRequest"`: Wrong format of the request param. This includes wrong CBOR format as well as the following condition:
+    - Channel is not between 0 and 100 inclusive
+
+**Known bugs**: Currently only one measurement can be carried. The radio mode has to be switched to `esb` and back to `powerMeasurement` in order to measure again otherwise a boggus value will be returned.
+
+## Led control
+
+The RGB LED state can be controlled from the USB API.
+The LED will also be controlled by the firmware so this is motly intended as a debug functinonality:
+depending of the radio state there is no guarantee the LED state set with this API will stay.
+
+### led.set
+
+Set LED status
+
+ - Request parameters: `[red(bool), green(bool), blue(bool)]`
+ - Response result: `null`
+
+Parameters:
+ - **red**: `true` to switch ON the red LED, `false` otherwise.
+ - **green**: `true` to switch ON the green LED, `false` otherwise.
+ - **blue**: `true` to switch ON the blue LED, `false` otherwise.
+
+Can return the following errors:
+ - `"Invalid parameter"`: Wrong format of the request param.
+
+## Button control
+
+The button state can be read form the API.
+
+### button.get
+
+Read the instant button state.
+
+ - Request parameters: `null`
+ - Response result: `state(bool)`
+
+Result:
+ - **state**: `true` if the button is currently pressed, `false` otherwise.
+
+## System functions
+
+### system.get_vcc
+
+Measure the voltage of the radio main VCC power supply.
+Crazyradio 2.0 has a nominal VCC of 3.15V
+
+ - Request parameters: `null`
+ - Response result: `vcc(float)`
+
+Result:
+ - **vcc**: Voltage, in volt, of the VCC power supply.
+
+### system.test_ios
+
+Manufacturing test of the IO lines. This function execute the following algorithm:
+
+ 1. Setup IO2 and IO3 as output, IO1 as analog input.
+ 2. Set IO2=1 and IO3=0
+ 3. Wait 100ms
+ 4. Measure IO1 voltage and save it in `io1_0`
+ 5. Set IO2=0 and IO3=1
+ 6. Wait 100ms
+ 7. Measure IO1 voltage and save it in `io1_1`
+
+ - Request parameters: `null`
+ - Response result: `[io1_0(float), io1_1(float)]`
+
+Result:
+ - **io1_0**: Voltage, in volt, of `io1_0`.
+ - **io1_1**: Voltage, in volt, of `io1_1`.

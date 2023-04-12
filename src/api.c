@@ -56,6 +56,7 @@ static void version(const rpc_request_t *request, rpc_response_t *response) {
 	rpc_response_send(response);
 }
 
+#ifdef CONFIG_CBOR_API_NOTIFY_TEST
 static void notify_example(const rpc_request_t *request) {
 	;
 }
@@ -76,13 +77,16 @@ static void test_send_notification(const rpc_request_t *request, rpc_response_t 
 
 	rpc_notification_send(&test_notification);
 }
+#endif
 
 // API definition
 
 static rpc_method_t methods[] = {
 	{.name = "version", .method = version },
+#ifdef CONFIG_CBOR_API_NOTIFY_TEST
 	{.name = "notify", .notify = notify_example},
 	{.name = "testSendNotification", .method = test_send_notification},
+#endif
     {.name = "radioMode.list", .method = radio_mode_list_rpc},
     {.name = "radioMode.get", .method = radio_mode_get_rpc},
     {.name = "radioMode.set", .method = radio_mode_set_rpc},
