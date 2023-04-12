@@ -25,7 +25,6 @@
 
 #include "esb.h"
 #include "radio_mode.h"
-#include "oryx.h"
 #include "contwave.h"
 #include "power_measurement.h"
 
@@ -36,7 +35,6 @@ static struct {
 } modes[] = {
     {.name = "disable", .init = NULL, .deinit = NULL},
     {.name = "esb", .init = esb_init, .deinit = esb_deinit},
-    {.name = "oryx", .init = oryx_init, .deinit = oryx_deinit},
     {.name = "contWave", .init = contwave_init, .deinit = contwave_deinit},
     {.name = "powerMeasurement", .init = power_measurement_init, .deinit = power_measurement_deinit},
 };

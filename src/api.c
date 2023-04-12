@@ -27,7 +27,6 @@
 
 #include "radio_mode.h"
 #include "esb.h"
-#include "oryx.h"
 #include "contwave.h"
 #include "power_measurement.h"
 #include "led.h"
@@ -88,7 +87,6 @@ static rpc_method_t methods[] = {
     {.name = "radioMode.get", .method = radio_mode_get_rpc},
     {.name = "radioMode.set", .method = radio_mode_set_rpc},
     {.name = "esb.sendPacket", .method = esb_send_packet_rpc},
-	{.name = "oryx.scan", .method = oryx_scan_rpc},
 	{.name = "contWave.start", .method = contwave_start_rpc},
 	{.name = "contWave.stop", .method = contwave_stop_rpc},
 	{.name = "powerMeasurement.measure_channel", .method = power_measurement_measure_channel_rpc},

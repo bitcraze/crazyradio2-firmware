@@ -95,28 +95,6 @@ Can return the following errors:
     - Address is not 5 byte long
     - Payload is more than 32 bytes long
 
-## Oryx radio
-
-### oryx.scan
-
-Oryx scans for Oryx targets and returns a list of targets.
-
- - Request param: `[channel(uint), timeout_ms(uint)]`
- - Response result: `{mac_address(string): {'rssi':rssi(int)}, ... }`
-
-Parameters:
- - **channel**: Radio channel to scan. Must be between 0 and 100. Channel 0 corresponds to 2400MHz and 100 to 2500MHz.
- - **timeout_ms**: The scanning timeout in miliseconds.
-
-Result:
- - **mac_addresses**: A map of mac-addresses as a key and information per target.
-
-Can return the following errors:
- - `"NotInitialized"`: Oryx module not enabled in the [radio mode](#radio-mode-switch) module.
- - `"BadRequest"`: Wrong format of the request param. This includes wrong CBOR format as well as the following condition:
-    - Channel is not between 0 and 100 inclusive
-
-
 ## Continuous wave
 
 The continuous wave is a test mode that makes the radio transmit a continuous carrier wave at the center frequency of a channel.
