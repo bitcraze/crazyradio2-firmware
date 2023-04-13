@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [crazyradio2, crazyradio2-CRPA-emulation]
+        mode: [crazyradio2-CRPA-emulation]
 
     steps:
     - name: Checkout Repo
