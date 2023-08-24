@@ -176,22 +176,29 @@ void esb_deinit()
 }
 
 void esb_set_arc(int value) {
+    k_mutex_lock(&radio_busy, K_FOREVER);
     arc = value & 0x0f;
+    k_mutex_unlock(&radio_busy);
 }
 
 void esb_set_ack_enabled(bool enabled) {
+    k_mutex_lock(&radio_busy, K_FOREVER);
     ack_enabled = enabled;
+    k_mutex_unlock(&radio_busy);
 }
 
 void esb_set_channel(uint8_t channel)
 {
+    k_mutex_lock(&radio_busy, K_FOREVER);
     if (channel <= 100) {
         nrf_radio_frequency_set(NRF_RADIO, 2400+channel);
     }
+    k_mutex_unlock(&radio_busy);
 }
 
 void esb_set_bitrate(esbBitrate_t bitrate)
 {
+    k_mutex_lock(&radio_busy, K_FOREVER);
     switch(bitrate) {
         case radioBitrate1M:
             nrf_radio_mode_set(NRF_RADIO, RADIO_MODE_MODE_Nrf_1Mbit);
@@ -200,6 +207,7 @@ void esb_set_bitrate(esbBitrate_t bitrate)
             nrf_radio_mode_set(NRF_RADIO, RADIO_MODE_MODE_Nrf_2Mbit);
             break;
     }
+    k_mutex_unlock(&radio_busy);
 }
 
 static uint32_t swap_bits(uint32_t inp)
@@ -227,11 +235,13 @@ static uint32_t bytewise_bitswap(uint32_t inp)
 
 void esb_set_address(uint8_t address[5])
 {
+    k_mutex_lock(&radio_busy, K_FOREVER);
     uint32_t base0 = address[1]<<24 | address[2]<<16 | address[3]<<8 | address[4];
     nrf_radio_base0_set(NRF_RADIO, bytewise_bitswap(base0));
     uint32_t prefix0 = nrf_radio_prefix0_get(NRF_RADIO);
     prefix0 = (prefix0 & 0xffffff00) | (swap_bits(address[0]) & 0x0ff);
     nrf_radio_prefix0_set(NRF_RADIO, prefix0);
+    k_mutex_unlock(&radio_busy);
 }
 
 bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t* retry)
