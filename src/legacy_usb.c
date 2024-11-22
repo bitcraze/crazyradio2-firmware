@@ -13,6 +13,8 @@
 #include "led.h"
 #include "system.h"
 
+#include <hal/nrf_radio.h>
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
@@ -187,6 +189,16 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             esb_set_ack_enabled(enabled);
 		} else if (setup->bRequest == SET_CONT_CARRIER && setup->wLength == 0) {
 			LOG_DBG("Setting radio Continious carrier %s", setup->wValue?"true":"false");
+
+            if (setup->wValue) {
+                fem_txen_set(true);
+
+                nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
+            } else {
+                nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+
+                fem_txen_set(false);
+            }
         } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_device(setup)) {
             uint8_t start = setup->wValue;
             uint8_t stop = setup->wIndex;
