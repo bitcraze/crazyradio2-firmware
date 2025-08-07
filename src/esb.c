@@ -296,8 +296,8 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
 
             arc_counter += 1;
 
-            // This test means that ARC will affect broadcast as well: broadcast are going to be send "arc" times
-            if (ack_received) {
+            // If ack is not enabled, it is normal to not receive an ack
+            if (ack_received || !ack_enabled) {
                 break;
             }
 
