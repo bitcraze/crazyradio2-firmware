@@ -26,9 +26,3 @@
 
 void contwave_init();
 void contwave_deinit();
-
-// RPC methods
-#include "rpc.h"
-
-void contwave_start_rpc(const rpc_request_t *request, rpc_response_t *response);
-void contwave_stop_rpc(const rpc_request_t *request, rpc_response_t *response);

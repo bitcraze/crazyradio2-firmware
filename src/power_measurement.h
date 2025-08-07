@@ -26,9 +26,3 @@
 
 void power_measurement_init();
 void power_measurement_deinit();
-
-// RPC methods
-#include "rpc.h"
-
-// rpc method for power_measurement_measure_channel_rpc
-void power_measurement_measure_channel_rpc(const rpc_request_t *request, rpc_response_t *response);

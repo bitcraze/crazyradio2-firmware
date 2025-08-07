@@ -27,11 +27,3 @@
  * @brief Reset to bootloader mode with both MSD and DFU over uart enabled
 */
 void system_reset_to_uf2(void);
-
-// RPC
-
-#include "rpc.h"
-
-void system_read_vcc_rpc(const rpc_request_t *request, rpc_response_t *response);
-
-void system_test_ios_rpc(const rpc_request_t *request, rpc_response_t *response);

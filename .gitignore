@@ -6,3 +6,5 @@ zephyr/
 modules/
 .west/
 crazyradio2.zip
+.venv
+

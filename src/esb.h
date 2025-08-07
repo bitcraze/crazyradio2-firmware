@@ -99,8 +99,3 @@ struct esbPacket_s {
  * @note This function will always return false if ack_enabled has been set to false.
 */
 bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t *retry);
-
-// RPC API
-#include "rpc.h"
-
-void esb_send_packet_rpc(const rpc_request_t *request, rpc_response_t *response);
