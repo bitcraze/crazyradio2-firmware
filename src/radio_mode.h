@@ -23,14 +23,5 @@
 
 #pragma once
 
-#include "rpc.h"
-
 // Internal API
 void radio_mode_init();
-
-// RPC API
-void radio_mode_list_rpc(const rpc_request_t *request, rpc_response_t *response);
-
-void radio_mode_set_rpc(const rpc_request_t *request, rpc_response_t *response);
-
-void radio_mode_get_rpc(const rpc_request_t *request, rpc_response_t *response);

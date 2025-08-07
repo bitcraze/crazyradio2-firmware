@@ -1,5 +1,4 @@
 #include <autoconf.h>
-#ifdef CONFIG_LEGACY_USB_PROTOCOL
 
 #include <zephyr/kernel.h>
 
@@ -354,5 +353,3 @@ static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length) {
         }
     }
 }
-
-#endif

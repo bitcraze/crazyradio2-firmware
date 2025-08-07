@@ -31,17 +31,8 @@
 
 #include "radio_mode.h"
 #include "led.h"
-#include "crusb.h"
 #include "fem.h"
-#include "button.h"
 #include "esb.h"
-
-#include "rpc.h"
-#include "api.h"
-
-#include <tinycbor/cbor.h>
-#include <tinycbor/cbor_buf_reader.h>
-#include <tinycbor/cbor_buf_writer.h>
 
 #include <nrfx_clock.h>
 
@@ -53,22 +44,6 @@ int startHFClock(void)
     nrfx_clock_hfclk_start();
 	return 0;
 }
-
-#ifndef CONFIG_LEGACY_USB_PROTOCOL
-K_MUTEX_DEFINE(usb_send_buffer_mutex);
-void send_usb_message(char* data, size_t length) {
-	static struct crusb_message message;
-	if (length > USB_MTU) {
-		return;
-	}
-
-	k_mutex_lock(&usb_send_buffer_mutex, K_FOREVER);
-	memcpy(message.data, data, length);
-	message.length = length;
-	crusb_send(&message);
-	k_mutex_unlock(&usb_send_buffer_mutex);
-}
-#endif
 
 void main(void)
 {
@@ -82,13 +57,7 @@ void main(void)
 	led_pulse_red(K_MSEC(500));
 	led_pulse_blue(K_MSEC(500));
 
-	button_init();
-
-#ifndef CONFIG_LEGACY_USB_PROTOCOL
-    radio_mode_init();
-#else
 	esb_init();
-#endif
 
 	fem_init();
 
@@ -113,25 +82,7 @@ void main(void)
 		return;
 	}
 
-#ifndef CONFIG_LEGACY_USB_PROTOCOL
-	rpc_transport_t usb_transport = {
-		.mtu = USB_MTU,
-		.send = send_usb_message,
-	};
-
-    // RPC loop
-    while(1) {
-        static struct crusb_message message;
-		static char response_buffer[USB_MTU];
-        crusb_receive(&message);
-		LOG_INF("Received %d byte message from usb!", message.length);
-
-		rpc_error_t error = rpc_dispatch(&crazyradio2_rpc_api, message.data, message.length, usb_transport, response_buffer);
-		LOG_INF("Dispatching result: %d", error);
-    }
-#else
 	while(1) {
 		k_sleep(K_MSEC(1000));
 	}
-#endif
 }

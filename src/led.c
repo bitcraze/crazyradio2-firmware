@@ -28,8 +28,6 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 
-#include "rpc.h"
-
 #define RED_LED_NODE DT_ALIAS(led0)
 #define GREEN_LED_NODE DT_ALIAS(led1)
 #define BLUE_LED_NODE DT_ALIAS(led2)
@@ -94,36 +92,4 @@ void led_pulse_green(k_timeout_t time) {
 void led_pulse_blue(k_timeout_t time) {
     led_set_blue(true);
     k_timer_start(&blue_timer, time, K_FOREVER);
-}
-
-void led_set_rpc(const rpc_request_t *request, rpc_response_t *response) {
-    // Check that the request is an array of 3 elements
-    int len=0;
-    cbor_value_get_array_length(&request->param, &len);
-    if (!cbor_value_is_array(&request->param) || len != 3) {
-        rpc_response_send_errorstr(response, "Invalid parameter");
-        return;
-    }
-
-    CborValue colors;
-    cbor_value_enter_container(&request->param, &colors);
-
-    // First element is red
-    bool redOn;
-    cbor_value_get_boolean(&colors, &redOn);
-    led_set_red(redOn);
-
-    // Second element is green
-    cbor_value_advance(&colors);
-    bool greenOn;
-    cbor_value_get_boolean(&colors, &greenOn);
-    led_set_green(greenOn);
-
-    // Third element is blue
-    cbor_value_advance(&colors);
-    bool blueOn;
-    cbor_value_get_boolean(&colors, &blueOn);
-    led_set_blue(blueOn);
-
-    rpc_response_send(response);
 }
