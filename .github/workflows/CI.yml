@@ -17,7 +17,8 @@ jobs:
 
     strategy:
       matrix:
-        mode: [crazyradio2, crazyradio2-CRPA-emulation]
+        # Todo: add back "crazyradio2" when new protocol is reimplemented
+        mode: [crazyradio2-CRPA-emulation]
 
     steps:
     - uses: actions/checkout@v3
@@ -33,7 +34,7 @@ jobs:
 
         cp build/zephyr/crazyradio2.uf2 ${{ matrix.mode }}.uf2
         cp build/zephyr/crazyradio2.hex ${{ matrix.mode }}.hex
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.mode }}
         path: |
