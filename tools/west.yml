@@ -9,28 +9,31 @@ manifest:
   projects:
     - name: zephyr
       remote: zephyrproject-rtos
-      revision: v3.2.0
+      revision: v4.2.0
       import: false
       west-commands: scripts/west-commands.yml
     - name: cmsis
       remote: zephyrproject-rtos
-      revision: 093de61c2a7d12dc9253daf8692f61f793a9254a
+      revision: 512cc7e895e8491696b61f7ba8066b4a182569b8
       path: modules/hal/cmsis
+      groups:
+        - hal
+    - name: cmsis_6
+      repo-path: CMSIS_6
+      remote: zephyrproject-rtos
+      revision: 06d952b6713a2ca41c9224a62075e4059402a151
+      path: modules/hal/cmsis_6
       groups:
         - hal
     - name: hal_nordic
       remote: zephyrproject-rtos
-      revision: 249199ec5a5c31d170659921048764e96d05cc0e
+      revision: 9587b1dcb83d24ab74e89837843a5f7d573f7059
       path: modules/hal/nordic
       groups:
         - hal
-    - name: tinycbor
-      remote: zephyrproject-rtos
-      revision: 9e1f34bc08123aaad7666d3652aaa839e8178b3b
-      path: modules/lib/tinycbor
     - name: segger
       remote: zephyrproject-rtos
-      revision: d4e568a920b4bd087886170a5624c167b2d0665e
+      revision: cf56b1d9c80f81a26e2ac5727c9cf177116a4692
       path: modules/debug/segger
       groups:
         - debug

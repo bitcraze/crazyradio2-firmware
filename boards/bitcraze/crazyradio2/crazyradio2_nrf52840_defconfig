@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# Enable MPU
+CONFIG_ARM_MPU=y
+
+# enable GPIO
+CONFIG_GPIO=y
+
+# enable SPI, required for the FEM
+CONFIG_SPI=y
+
+# Crazyradio 2.0 does not have a 32kHz crystal, enable internal RC
+CONFIG_CLOCK_CONTROL_NRF_K32SRC_RC=y

@@ -45,7 +45,7 @@ int startHFClock(void)
 	return 0;
 }
 
-void main(void)
+int main(void)
 {
     printk("Hello World! %s\n", CONFIG_BOARD);
 
@@ -79,10 +79,12 @@ void main(void)
     int ret = usb_enable(NULL);
 	if (ret != 0) {
 		LOG_ERR("Failed to enable USB");
-		return;
+		return -1;
 	}
 
 	while(1) {
 		k_sleep(K_MSEC(1000));
 	}
+
+	return 0;
 }

@@ -1,0 +1,6 @@
+board:
+  name: crazyradio2
+  full_name: Crazyradio 2.0
+  vendor: bitcraze
+  socs:
+  - name: nrf52840

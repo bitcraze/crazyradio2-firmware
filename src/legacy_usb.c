@@ -5,6 +5,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/usb_ch9.h>
 #include <zephyr/usb/usb_device.h>
+#include <usb_descriptor.h>
 #include <zephyr/usb/bos.h>
 
 #include "esb.h"
@@ -39,49 +40,45 @@ static struct {
     .ack_enabled = true,
 };
 
-struct usb_crazyradio_config {
-	struct usb_if_descriptor if0;
-	struct usb_ep_descriptor if0_out_ep;
-	struct usb_ep_descriptor if0_in_ep;
-} __packed;
-
+#define CRAZYRADIO_NUM_EP 2
 #define CRAZYRADIO_OUT_EP_ADDR 0x01
 #define CRAZYRADIO_IN_EP_ADDR 0x81
-#define CONFIG_CRAZYRADIO_BULK_EP_MPS 64
+#define CRAZYRADIO_BULK_EP_MPS 64
 
-USBD_CLASS_DESCR_DEFINE(primary, 0) struct usb_crazyradio_config crazyradio_cfg = {
+#define INITIALIZER_IF(num_ep, iface_class)				\
+	{								\
+		.bLength = sizeof(struct usb_if_descriptor),		\
+		.bDescriptorType = USB_DESC_INTERFACE,			\
+		.bInterfaceNumber = 0,					\
+		.bAlternateSetting = 0,					\
+		.bNumEndpoints = num_ep,				\
+		.bInterfaceClass = iface_class,				\
+		.bInterfaceSubClass = 0,				\
+		.bInterfaceProtocol = 0,				\
+		.iInterface = 0,					\
+	}
+
+#define INITIALIZER_IF_EP(addr, attr, mps, interval)			\
+	{								\
+		.bLength = sizeof(struct usb_ep_descriptor),		\
+		.bDescriptorType = USB_DESC_ENDPOINT,			\
+		.bEndpointAddress = addr,				\
+		.bmAttributes = attr,					\
+		.wMaxPacketSize = sys_cpu_to_le16(mps),			\
+		.bInterval = interval,					\
+	}
+
+USBD_CLASS_DESCR_DEFINE(primary, 0) struct {
+    struct usb_if_descriptor if0;
+	struct usb_ep_descriptor if0_in_ep;
+	struct usb_ep_descriptor if0_out_ep;
+} __packed crazyradio_desc = {
 	/* Interface descriptor 0 */
-	.if0 = {
-		.bLength = sizeof(struct usb_if_descriptor),
-		.bDescriptorType = USB_DESC_INTERFACE,
-		.bInterfaceNumber = 0,
-		.bAlternateSetting = 0,
-		.bNumEndpoints = 2,
-		.bInterfaceClass = USB_BCC_VENDOR,
-		.bInterfaceSubClass = 0,
-		.bInterfaceProtocol = 0,
-		.iInterface = 0,
-	},
-
-	/* Data Endpoint OUT */
-	.if0_out_ep = {
-		.bLength = sizeof(struct usb_ep_descriptor),
-		.bDescriptorType = USB_DESC_ENDPOINT,
-		.bEndpointAddress = CRAZYRADIO_OUT_EP_ADDR,
-		.bmAttributes = USB_DC_EP_BULK,
-		.wMaxPacketSize = sys_cpu_to_le16(CONFIG_CRAZYRADIO_BULK_EP_MPS),
-		.bInterval = 0x00,
-	},
-
-	/* Data Endpoint IN */
-	.if0_in_ep = {
-		.bLength = sizeof(struct usb_ep_descriptor),
-		.bDescriptorType = USB_DESC_ENDPOINT,
-		.bEndpointAddress = CRAZYRADIO_IN_EP_ADDR,
-		.bmAttributes = USB_DC_EP_BULK,
-		.wMaxPacketSize = sys_cpu_to_le16(CONFIG_CRAZYRADIO_BULK_EP_MPS),
-		.bInterval = 0x00,
-	},
+	.if0 = INITIALIZER_IF(CRAZYRADIO_NUM_EP, USB_BCC_VENDOR),
+	.if0_out_ep = INITIALIZER_IF_EP(CRAZYRADIO_OUT_EP_ADDR, USB_DC_EP_BULK,
+				       CRAZYRADIO_BULK_EP_MPS, 0),
+	.if0_in_ep = INITIALIZER_IF_EP(CRAZYRADIO_IN_EP_ADDR, USB_DC_EP_BULK,
+				       CRAZYRADIO_BULK_EP_MPS, 0),
 };
 
 void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
@@ -227,10 +224,11 @@ void crazyradio_interface_config(struct usb_desc_header *head, uint8_t bInterfac
 	;
 }
 
-USBD_CFG_DATA_DEFINE(primary, crazyradio) struct usb_cfg_data crazyradio_config = {
+// USBD_CFG_DATA_DEFINE(primary, crazyradio) struct usb_cfg_data crazyradio_config = {
+USBD_DEFINE_CFG_DATA(crazyradio_config) = {
 	.usb_device_description = NULL,
 	.interface_config = crazyradio_interface_config,
-	.interface_descriptor = &crazyradio_cfg.if0,
+	.interface_descriptor = &crazyradio_desc.if0,
 	.cb_usb_status = crazyradio_status_cb,
 	.interface = {
 		.class_handler = NULL,
