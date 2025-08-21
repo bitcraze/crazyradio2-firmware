@@ -27,7 +27,7 @@ fetch-zephyr:
     just fetch-python-dep
 
 
-# Fech python dependencies
+# Fetch python dependencies
 fetch-python-dep:
     uv pip install -r zephyr/scripts/requirements.txt
 
