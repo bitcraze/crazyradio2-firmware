@@ -8,3 +8,4 @@ modules/
 crazyradio2.zip
 .venv
 
+src/crazyradio2_firmware.egg-info

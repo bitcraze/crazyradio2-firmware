@@ -7,6 +7,6 @@ pushd .
 
 cd $scriptDir/../../
 
-west build -b crazyradio2 -- ${@}
+just build
 
 popd

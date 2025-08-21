@@ -1,0 +1,7 @@
+[project]
+name = "crazyradio2-firmware"
+version = "0.1.0"
+description = "Crazyradio 2.0 firmware"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["rust-just", "fzf-bin", "west", "cmake"]
