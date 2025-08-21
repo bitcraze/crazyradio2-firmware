@@ -224,7 +224,6 @@ void crazyradio_interface_config(struct usb_desc_header *head, uint8_t bInterfac
 	;
 }
 
-// USBD_CFG_DATA_DEFINE(primary, crazyradio) struct usb_cfg_data crazyradio_config = {
 USBD_DEFINE_CFG_DATA(crazyradio_config) = {
 	.usb_device_description = NULL,
 	.interface_config = crazyradio_interface_config,
