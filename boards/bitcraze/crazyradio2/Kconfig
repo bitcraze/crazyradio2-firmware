@@ -8,4 +8,4 @@ if BOARD_CRAZYRADIO2
 
 # Todo: any board configuration there?
 
-endif # BOARD_NRF52840DONGLE
+endif # BOARD_CRAZYRADIO2
