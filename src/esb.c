@@ -34,7 +34,7 @@
 #include <zephyr/types.h>
 #include <soc.h>
 #include <zephyr/device.h>
-#include <zephyr/random/rand32.h>
+#include <zephyr/random/random.h>
 
 static K_MUTEX_DEFINE(radio_busy);
 static K_SEM_DEFINE(radioXferDone, 0, 1);
@@ -106,7 +106,7 @@ void esb_init()
 {
     // Timer0
     nrf_timer_bit_width_set(NRF_TIMER0, NRF_TIMER_BIT_WIDTH_32);
-    nrf_timer_frequency_set(NRF_TIMER0, NRF_TIMER_FREQ_1MHz);
+    nrf_timer_prescaler_set(NRF_TIMER0, NRF_TIMER_FREQ_1MHz);
     nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CLEAR);
     nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_START);
 

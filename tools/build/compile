@@ -7,6 +7,6 @@ pushd .
 
 cd $scriptDir/../../
 
-west build -b bitcraze_crazyradio_2 -- ${@}
+just build
 
 popd

@@ -1,0 +1,11 @@
+# Crazyradio 2.0 NRF52840 board configuration
+#
+# Copyright (c) 2025 Bitcraze AB
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_CRAZYRADIO2
+
+# Todo: any board configuration there?
+
+endif # BOARD_CRAZYRADIO2

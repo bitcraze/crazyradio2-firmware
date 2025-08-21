@@ -1,4 +1,4 @@
-# Copyright (c) 2022 Bitcraze AB
+# Copyright (c) 2024 Bitcraze AB
 # Copyright (c) 2022 Nordic Semiconductor
 # SPDX-License-Identifier: Apache-2.0
 

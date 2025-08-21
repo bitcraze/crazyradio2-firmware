@@ -1,0 +1,6 @@
+# Copyright (c) 2025 Bitcraze AB
+#
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_CRAZYRADIO2
+        select SOC_NRF52840_QIAA

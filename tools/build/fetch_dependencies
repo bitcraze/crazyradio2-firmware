@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
 set -e
 
-scriptDir=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
-
-pushd .
-
-cd $scriptDir/../../
-
-# Test if the .west folder exists
-if [ ! -d .west ]; then
-    # If not, then initialize the west project
-    west init -l tools
-fi
-
-# Always update the west project
-west update
-
-popd
+just fetch-zephyr

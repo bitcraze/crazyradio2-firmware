@@ -3,66 +3,64 @@ title: Building the firmware
 page_id: build
 ---
 
-This project can be built using the [Toolbelt](https://github.com/bitcraze/toolbelt) or with natively installed tools.
+This project is a Zephyr app. If you already have all dependencies installed it can be compiled with `west build -b crazyradio2`.
+The rest of this page documents how setup your development environment.
 
-## Using the Toolbelt
+This project uses [just](https://github.com/casey/just?tab=readme-ov-file#just) to simplify running commands. It can either be installed in your system or run with `uv run just`. Any commands can be run manually as well, look in the `justfile` at the root of the repository for the commands
 
-Make sure the [Toolbelt](https://github.com/bitcraze/toolbelt) is
-[installed](https://www.bitcraze.io/documentation/repository/toolbelt/master/installation/)
+## Host dependencies
 
-From a terminal, run
+This project can be compiled on Linux and MacOS. Compiling on Windows is not supported at the moment.
 
-To build the firmware with the Crazyradio 2.0 USB protocol:
-
-```bash
-tb build
+The minimum required tools are [uv](https://docs.astral.sh/uv/) and `git`. It can be installed either from UV's webpage or from your package manager. On Ubutu with:
+```
+apt install uv
 ```
 
-To build with the legacy (ie Crazyradio-PA emulation) protocol;
-
-```bash
-tb build-legacy
+and on MacOS with Brew:
+```
+brew install uv
 ```
 
-The firmware, ready to be drag-and-dropped in the bootloader drive will be in `build/zephyr/crazyradio2.uf2`.
+The project also make use of `just` and `cmake` as native dependencies, they are part of the UV venv but they can also be installed on the host with the package manager (apt or brew)
 
-## Using natively installed tools
+## Entering build environment
 
-### Build dependencies
+Zephyr is built with `west` which is a python tools and is using a lot of python dependencies. Hence it is advised to work in a python venv.
 
-This firmware is built on Zephyr RTOS so it should compile on all platform supported by zephyr.
-You can follow the [Zephyr getting started guide](https://docs.zephyrproject.org/latest/develop/getting_started/index.html) to install the required dependencies.
+To setup the venv and install build dependencies:
+``` bash
+uv venv
+source ./.venv/bin/activate
+uv pip install .
+```
 
-Alternatively, the following commands allows to install dependencies on a recent Ubuntu linux.
-The procedure can be easily adapted to work on any modern linux distribution (including in Windows's WSL).
+Each subsequent times, to enter the Venv, to work with the project:
+``` bash
+source ./.venv/bin/activate
+```
 
-This procedure will install a lot of python packages so you may want to run in a [python venv](https://docs.python.org/3/library/venv.html).
+## Toolchain
 
-```bash
-# Build dependencies
-sudo apt install python3-pip cmake curl ninja-build
-pip install west
+The Zephyr sdk is required. If you do not already have it. You can either install it manually, or this command can be used to install the required sdk only (for arm) in `~/.local/`:
 
-# installing Zephyr SDK for ARM only in ~/.local. See Zephyr documentation for other possible location.
-mkdir -p $HOME/.local
-curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.0/zephyr-sdk-0.16.0_linux-x86_64_minimal.tar.xz | tar xJ -C $HOME/.local/
-curl -L https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.16.0/toolchain_linux-x86_64_arm-zephyr-eabi.tar.xz | tar xJ -C $HOME/.local/zephyr-sdk-0.16.0/
+``` bash
+just fetch-zephyr-sdk
+```
 
-# To run in the project folder to pull zephyr and all required libraries
-tools/build/fetch_dependencies
-pip install -r zephyr/scripts/requirements.txt
+### Fetching zephyr and installing dependencies
+
+Before being able to build the project, Zephyr and its python dependencies must be fetched:
+
+``` bash
+just fetch-zephyr
 ```
 
 ### Builing, flashing
 
 To build the firmware:
 ```bash
-west build -b bitcraze_crazyradio_2 
-```
-
-To build the legacy USB protocol (Crazyradio-PA compatible) firmware:
-```bash
-west build -b bitcraze_crazyradio_2 -- -DCONFIG_LEGACY_USB_PROTOCOL=y
+west build -b crazyradio2
 ```
 
 All build artifacts and configuration are in the `build` folder so to clean the build one can simply remove this folder with `rm -r build`.

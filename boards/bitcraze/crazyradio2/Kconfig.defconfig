@@ -1,0 +1,25 @@
+# Crazyradio 2.0 NRF52840 board configuration
+#
+# Copyright (c) 2025 Bitcraze AB
+#
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_CRAZYRADIO2
+
+config HW_STACK_PROTECTION
+	default ARCH_HAS_STACK_PROTECTION
+
+# Crazyradio 2.0 has the Adafruit UF2 bootloader. Setting load offset where the bootloader expects it
+
+config FLASH_LOAD_OFFSET
+	default 0x00026000
+
+# Build UF2 image by default
+
+config BUILD_OUTPUT_UF2
+	default y
+
+config BUILD_OUTPUT_UF2_FAMILY_ID
+	default "0xada52840"
+
+endif # BOARD_CRAZYRADIO2
