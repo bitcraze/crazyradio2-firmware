@@ -37,7 +37,7 @@ jobs:
         uv venv
         source ./.venv/bin/activate
 
-        just fetch-sdk
+        just --yes fetch-zephyr-sdk
         just fetch-zephyr
         just build
 
