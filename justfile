@@ -34,3 +34,9 @@ fetch-python-dep:
 # Build Crazyradio2 firmware
 build:
     west build -b crazyradio2
+
+# Flash and resets Crazyradio to firmware mode using probe-rs
+flash:
+    west flash
+    sleep 2
+    probe-rs reset --chip nrf52840_xxAA

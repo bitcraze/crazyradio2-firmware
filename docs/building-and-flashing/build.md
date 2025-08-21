@@ -26,7 +26,7 @@ The project also make use of `just` and `cmake` as native dependencies, they are
 
 ## Entering build environment
 
-Zephyr is built with `west` which is a python tools and is using a lot of python dependencies. Hence it is advised to work in a pypthon venv.
+Zephyr is built with `west` which is a python tools and is using a lot of python dependencies. Hence it is advised to work in a python venv.
 
 To setup the venv and install build dependencies:
 ``` bash
@@ -42,10 +42,10 @@ source ./.venv/bin/activate
 
 ## Toolchain
 
-The Zephyr toolchain is required. If you do not already have it. You can either install it manually, or this command can be used to install the required toolchain only (for arm) in `~/.local/`:
+The Zephyr sdk is required. If you do not already have it. You can either install it manually, or this command can be used to install the required sdk only (for arm) in `~/.local/`:
 
 ``` bash
-just fetch-zephyr-toolchain
+just fetch-zephyr-sdk
 ```
 
 ### Fetching zephyr and installing dependencies
@@ -60,7 +60,7 @@ just fetch-zephyr
 
 To build the firmware:
 ```bash
-west build -b bitcraze_crazyradio_2
+west build -b crazyradio2
 ```
 
 All build artifacts and configuration are in the `build` folder so to clean the build one can simply remove this folder with `rm -r build`.
