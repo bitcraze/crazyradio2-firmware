@@ -36,6 +36,7 @@ jobs:
       run: |
         uv venv
         source ./.venv/bin/activate
+        uv pip install .
 
         just --yes fetch-zephyr-sdk
         just fetch-zephyr
