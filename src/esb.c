@@ -145,7 +145,7 @@ void esb_init()
 
     // Enable disabled interrupt only, the rest is handled by shorts
     nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
-    IRQ_CONNECT(RADIO_IRQn, 2, radio_isr, NULL, 0);
+    IRQ_CONNECT(RADIO_IRQn, 0, radio_isr, NULL, 0);
     irq_enable(RADIO_IRQn);
 
     fem_init();
