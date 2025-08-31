@@ -63,13 +63,13 @@ If a method is not found, the server answer with:
 
     [type (1), msgid, "well-known.NotFound", Null]
 
-This is a special case to indicate that the method does not exists.
+This is a special case to indicate that the method does not exist.
 
 ## Listing methods
 
 A special method exists to list the supported methods of a server:
 
-    [type (0), msgid, "well-known.methods, None]
+    [type (0), msgid, "well-known.methods", None]
 
 The response result contains a CBOR Map with as key string of the method name and as value an unsigned integer that can be
 used as method index.
