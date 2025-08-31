@@ -1,6 +1,6 @@
 ---
 title: Crazyradio 2.0 CBOR RPC specification
-page_id: cbor_rpc_secification
+page_id: cbor_rpc_specification
 ---
 
 ## Abstract
@@ -18,7 +18,7 @@ The protocol defines 3 messages types:
  - Response
  - Notification
 
-Request and responses are used for procedure call. They both contains a message ID that allows to match a response with
+Request and responses are used for procedure calls. They both contain a message ID that allows to match a response with
 the corresponding response. Notifications are sent and received without any message ID, they are identified by a
 method name.
 
@@ -37,7 +37,7 @@ Methods name and errors starting with ".well-known" are reserved for the protoco
 
  - **type**: Unsigned integer of value 0 to denote a request
  - **msgid**: Unsigned integer of up to 64Bits precision. The *Response* message from the server will have the same *msgid*.
- - **method**: String representing or index the method to call
+ - **method**: String or index representing the method to call
  - **params**: Any CBOR element
 
 ### Response message
@@ -53,7 +53,7 @@ Methods name and errors starting with ".well-known" are reserved for the protoco
 
     [Type (2), method, param]
 
- - **type**: Unsigned integer of value 0 to denote a request
+ - **type**: Unsigned integer of value 2 to denote a notification
  - **method**: String or index representing the method that initiated or will receive the notification.
  - **params**: Any CBOR element
 
@@ -77,10 +77,10 @@ used as method index.
 ## Method name compression
 
 Since the intention of the protocol is to be used in a context where the list of method is static, methods can be called
-by index instead of by name. This improves a lot the efficiently since it can instantly select the method on the server
+by index instead of by name. This greatly improves efficiency since it can instantly select the method on the server
 side instead of using a look-up table.
 
-The [method listing procedure](#listing-methods) returns the list of all the methods associated with there index, the
+The [method listing procedure](#listing-methods) returns the list of all the methods associated with their index, the
 index can then be used instead of the method name in Request and Notifications.
 
 [CBOR]: https://cbor.io/
