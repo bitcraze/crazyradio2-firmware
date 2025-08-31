@@ -62,14 +62,14 @@ int main(void)
 	fem_init();
 
 	// Test the FEM
-	printk("Enaabling TX\n");
+	printk("Enabling TX\n");
 	fem_txen_set(true);
 	k_sleep(K_MSEC(10));
 	bool enabled = fem_is_pa_enabled();
 	printk("PA enabled: %d\n", enabled);
 	fem_txen_set(false);
 
-	printk("Enaabling RX\n");
+	printk("Enabling RX\n");
 	fem_rxen_set(true);
 	k_sleep(K_MSEC(10));
 	enabled = fem_is_lna_enabled();
