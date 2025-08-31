@@ -4,7 +4,7 @@ page_id: build
 ---
 
 This project is a Zephyr app. If you already have all dependencies installed it can be compiled with `west build -b crazyradio2`.
-The rest of this page documents how setup your development environment.
+The rest of this page documents how to setup your development environment.
 
 This project uses [just](https://github.com/casey/just?tab=readme-ov-file#just) to simplify running commands. It can either be installed in your system or run with `uv run just`. Any commands can be run manually as well, look in the `justfile` at the root of the repository for the commands
 
@@ -12,7 +12,7 @@ This project uses [just](https://github.com/casey/just?tab=readme-ov-file#just) 
 
 This project can be compiled on Linux and MacOS. Compiling on Windows is not supported at the moment.
 
-The minimum required tools are [uv](https://docs.astral.sh/uv/) and `git`. It can be installed either from UV's webpage or from your package manager. On Ubutu with:
+The minimum required tools are [uv](https://docs.astral.sh/uv/) and `git`. It can be installed either from UV's webpage or from your package manager. On Ubuntu with:
 ```
 apt install uv
 ```
@@ -22,20 +22,20 @@ and on MacOS with Brew:
 brew install uv
 ```
 
-The project also make use of `just` and `cmake` as native dependencies, they are part of the UV venv but they can also be installed on the host with the package manager (apt or brew)
+The project also makes use of `just` and `cmake` as native dependencies, they are part of the UV venv but they can also be installed on the host with the package manager (apt or brew)
 
 ## Entering build environment
 
-Zephyr is built with `west` which is a python tools and is using a lot of python dependencies. Hence it is advised to work in a python venv.
+Zephyr is built with `west` which is a Python tool and uses many Python dependencies. Hence it is advised to work in a python venv.
 
-To setup the venv and install build dependencies:
+To set up the venv and install build dependencies:
 ``` bash
 uv venv
 source ./.venv/bin/activate
 uv pip install .
 ```
 
-Each subsequent times, to enter the Venv, to work with the project:
+Each subsequent time, to enter the venv to work with the project:
 ``` bash
 source ./.venv/bin/activate
 ```
@@ -56,7 +56,7 @@ Before being able to build the project, Zephyr and its python dependencies must 
 just fetch-zephyr
 ```
 
-### Builing, flashing
+### Building, flashing
 
 To build the firmware:
 ```bash
