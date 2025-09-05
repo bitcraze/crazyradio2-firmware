@@ -1,6 +1,6 @@
 ---
 title: Cortex debugging
-page_id: coretex_debugging
+page_id: cortex_debugging
 ---
 
 For VS code, follow the prerequisites of the [Crazyflie's STM debugging instructions](https://www.bitcraze.io/documentation/repository/crazyflie-firmware/master/development/openocd_gdb_debugging/).
