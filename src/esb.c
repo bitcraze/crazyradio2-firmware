@@ -165,8 +165,7 @@ void esb_init()
     // Acquire RSSI at radio address
     nrf_radio_shorts_enable(NRF_RADIO, NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK | NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
 
-    // Enable disabled interrupt only, the rest is handled by shorts
-    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+    // Disabled interrupt will be enabled when needed
     IRQ_CONNECT(RADIO_IRQn, 1, radio_isr, NULL, 0);
     irq_enable(RADIO_IRQn);
 
@@ -298,6 +297,10 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         int arc_counter = 0;
 
         do {
+            // Enable disabled interrupt only, the rest is handled by shorts
+            nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+            nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
             nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
                                         RADIO_SHORTS_END_DISABLE_Msk);
             if (ack_enabled) {
@@ -343,6 +346,19 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
                 return false;
             }
 
+            // We do not need the interrupt anymore
+            nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
+            // Clean up after ourselves
+            nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
+                                        RADIO_SHORTS_END_DISABLE_Msk);
+            if (ack_enabled) {
+                nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+            }
+            nrf_ppi_channel_disable(NRF_PPI, NRF_PPI_CHANNEL27); // END -> Timer0 Capture[2]
+            nrfx_ppi_channel_disable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
+
+            // Check if ack received
             ack_received = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
 
             arc_counter += 1;
