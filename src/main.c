@@ -22,7 +22,6 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/sys/printk.h>
 
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
@@ -47,7 +46,7 @@ int startHFClock(void)
 
 int main(void)
 {
-    printk("Hello World! %s\n", CONFIG_BOARD);
+    LOG_INF("Staring %s on target %s", CONFIG_KERNEL_BIN_NAME, CONFIG_BOARD_TARGET);
 
     // HFCLK crystal is needed by the radio and USB
     startHFClock();
@@ -62,18 +61,18 @@ int main(void)
 	fem_init();
 
 	// Test the FEM
-	printk("Enabling TX\n");
+	LOG_DBG("Enabling TX");
 	fem_txen_set(true);
 	k_sleep(K_MSEC(10));
 	bool enabled = fem_is_pa_enabled();
-	printk("PA enabled: %d\n", enabled);
+	LOG_DBG("PA enabled: %d", enabled);
 	fem_txen_set(false);
 
-	printk("Enabling RX\n");
+	LOG_DBG("Enabling RX");
 	fem_rxen_set(true);
 	k_sleep(K_MSEC(10));
 	enabled = fem_is_lna_enabled();
-	printk("LNA enabled: %d\n", enabled);
+	LOG_DBG("LNA enabled: %d", enabled);
 	fem_rxen_set(false);
 
     int ret = usb_enable(NULL);
@@ -81,6 +80,8 @@ int main(void)
 		LOG_ERR("Failed to enable USB");
 		return -1;
 	}
+
+	LOG_INF("Initialization done");
 
 	while(1) {
 		k_sleep(K_MSEC(1000));

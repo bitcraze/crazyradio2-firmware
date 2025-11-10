@@ -36,6 +36,10 @@
 #include <zephyr/device.h>
 #include <zephyr/random/random.h>
 
+#include <zephyr/logging/log.h>
+
+LOG_MODULE_REGISTER(esb);
+
 static K_MUTEX_DEFINE(radio_busy);
 static K_SEM_DEFINE(radioXferDone, 0, 1);
 
@@ -47,10 +51,15 @@ static struct esbPacket_s * ackBuffer;
 static bool ack_enabled = true;
 static int arc = 3;
 
+static bool continuous_carrier_enabled = false;
+
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
 static void radio_isr(void *arg)
 {
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+
     if (sending) {
         // Packet sent!, the radio is currently switching to RX mode
         // We need to setup the timeout timer, the END time is
@@ -97,10 +106,23 @@ static void radio_isr(void *arg)
 
         k_sem_give(&radioXferDone);
     }
-
-    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
-    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
 }
+
+const char* radio_states[13] = {
+    "Disabled",     // 0
+    "RxRu",         // 1
+    "RxIdle",       // 2
+    "Rx",           // 3
+    "RxDisable",    // 4
+    "Invalid (5)",  // 5
+    "Invalid (6)",  // 6
+    "Invalid (7)",  // 7
+    "Invalid (8)",  // 8
+    "TxRu",         // 9
+    "TxIdle",       // 10
+    "Tx",           // 11
+    "TxDisable"     // 12
+};
 
 void esb_init()
 {
@@ -128,7 +150,7 @@ void esb_init()
 
     // Configure channel and bitrate
     nrf_radio_mode_set(NRF_RADIO, NRF_RADIO_MODE_NRF_2MBIT);
-    nrf_radio_frequency_set(NRF_RADIO, 2447);
+    nrf_radio_frequency_set(NRF_RADIO, 2442); // Channel 42
 
     // Configure Addresses
     nrf_radio_base0_set(NRF_RADIO, 0xe7e7e7e7);
@@ -143,9 +165,8 @@ void esb_init()
     // Acquire RSSI at radio address
     nrf_radio_shorts_enable(NRF_RADIO, NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK | NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
 
-    // Enable disabled interrupt only, the rest is handled by shorts
-    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
-    IRQ_CONNECT(RADIO_IRQn, 2, radio_isr, NULL, 0);
+    // Disabled interrupt will be enabled when needed
+    IRQ_CONNECT(RADIO_IRQn, 1, radio_isr, NULL, 0);
     irq_enable(RADIO_IRQn);
 
     fem_init();
@@ -250,6 +271,10 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         return false;
     }
 
+    if (continuous_carrier_enabled) {
+        return false;
+    }
+
     k_mutex_lock(&radio_busy, K_FOREVER);
 
     static int lossCounter = 0;
@@ -272,6 +297,10 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         int arc_counter = 0;
 
         do {
+            // Enable disabled interrupt only, the rest is handled by shorts
+            nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+            nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
             nrf_radio_shorts_enable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
                                         RADIO_SHORTS_END_DISABLE_Msk);
             if (ack_enabled) {
@@ -290,8 +319,46 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
             sending = true;
             nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
 
-            k_sem_take(&radioXferDone, K_FOREVER);
+            if (k_sem_take(&radioXferDone, K_MSEC(200)) != 0) {
+                // The radio state machine is stuck! Reset the radio and returns that the packet is lost
+                LOG_WRN("Radio state machine stuck, resetting radio");
 
+                LOG_DBG("Interrupt state: sending: %d", sending);
+
+                unsigned int radio_state = nrf_radio_state_get(NRF_RADIO);
+                if (radio_state <= 12) {
+                    LOG_DBG("Radio state: %s", radio_states[radio_state]);
+                } else {
+                    LOG_DBG("Radio state: Invalid (%d)", radio_state);
+                }
+
+                // Print all information about the radio packet
+                LOG_DBG("Packet length: %d", packet->length);
+                LOG_DBG("Packet PID: %d", packet->s1);
+                LOG_HEXDUMP_DBG(packet, packet->length + 2, "Packet data:");
+
+                irq_disable(RADIO_IRQn);
+                nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+                k_sem_reset(&radioXferDone);
+                k_mutex_unlock(&radio_busy);
+                irq_enable(RADIO_IRQn);
+
+                return false;
+            }
+
+            // We do not need the interrupt anymore
+            nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
+            // Clean up after ourselves
+            nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_READY_START_Msk |
+                                        RADIO_SHORTS_END_DISABLE_Msk);
+            if (ack_enabled) {
+                nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+            }
+            nrf_ppi_channel_disable(NRF_PPI, NRF_PPI_CHANNEL27); // END -> Timer0 Capture[2]
+            nrfx_ppi_channel_disable(NRF_PPI_CHANNEL26);  // RADIO_ADDR -> T0[1]  (debug)
+
+            // Check if ack received
             ack_received = (!timeout) && nrf_radio_crc_status_check(NRF_RADIO) && ack_enabled;
 
             arc_counter += 1;
@@ -317,4 +384,33 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
 
         return ack_received;
     }
+}
+
+bool esb_set_continuous_carrier(bool enable) {
+    if (!isInit) {
+        return false;
+    }
+
+    if (enable == continuous_carrier_enabled) {
+        return false;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    if (enable) {
+        fem_txen_set(true);
+
+        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
+
+
+    } else {
+        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+
+        fem_txen_set(false);
+    }
+
+
+    continuous_carrier_enabled = enable;
+
+    k_mutex_unlock(&radio_busy);
+    return true;
 }

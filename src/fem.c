@@ -42,6 +42,9 @@
 
 #include "led.h"
 
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(fem);
+
 // #include "util/mem.h"
 
 // #include "hal/ccm.h"
@@ -182,7 +185,7 @@ void fem_init() {
 
     uint8_t *data = rxbuffer.buffers[0].buf;
 
-	printk("ret: %d, data: %x %x\n", ret, data[0], data[1]);
+	LOG_DBG("ret: %d, data: %x %x", ret, data[0], data[1]);
 
 	if (data[1] != 0x02) {
 		// TODO: Handle FEM communication error!
@@ -225,7 +228,7 @@ static void write_register(uint8_t address, uint8_t value) {
 		.count = 1,
 	};
 
-	printk("write_register: %x %x\n", address, value);
+	LOG_DBG("write_register: %x %x", address, value);
 
 	spi_write_dt(&spi_dev, &buffer);
 #endif
@@ -259,7 +262,7 @@ static uint8_t read_register(uint8_t address) {
 
 	uint8_t *data = rxbuffer.buffers[0].buf;
 
-	printk("read_register: %x %x\n", address, data[1]);
+	LOG_DBG("read_register: %x %x", address, data[1]);
 
 	return data[1];
 #else

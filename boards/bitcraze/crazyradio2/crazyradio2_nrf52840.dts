@@ -5,8 +5,12 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-
+	
 /dts-v1/;
+
+/* Default priority of all the nRF peripheral's interrupt */
+#define NRF_DEFAULT_IRQ_PRIORITY 4
+
 #include <nordic/nrf52840_qiaa.dtsi>
 #include "crazyradio2_nrf52840-pinctrl.dtsi"
 #include <zephyr/dt-bindings/input/input-event-codes.h>

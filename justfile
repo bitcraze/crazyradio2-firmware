@@ -38,5 +38,8 @@ build:
 # Flash and reset Crazyradio to firmware mode using probe-rs
 flash:
     west flash
-    sleep 2
+    sleep 1
     probe-rs reset --chip nrf52840_xxAA
+
+rtt: flash
+    west rtt

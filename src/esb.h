@@ -99,3 +99,16 @@ struct esbPacket_s {
  * @note This function will always return false if ack_enabled has been set to false.
 */
 bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t *retry);
+
+/**
+ * @brief Enable or disable continuous carrier mode
+ * 
+ * When continuous carrier mode is enabled, the radio will transmit a continuous
+ * unmodulated carrier wave on the set channel. This is useful for testing
+ * purposes, such as measuring output power or spectrum analysis.
+ * 
+ * @param enable true to enable continuous carrier mode, false to disable it
+ * @return true if the operation was successful, false if no change was made
+ */
+bool esb_set_continuous_carrier(bool enable);
+
