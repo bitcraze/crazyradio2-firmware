@@ -12,7 +12,7 @@ The interface has the following configuration in the USB descriptor:
 | bInterfaceSubClass | 0     |                       |
 | bInterfaceProtocol | 0     |                       |
 
-Note that there migh be more interface on the Crazyradio 2.0 so address of the enpoints should not be assumed,
+Note that there might be more interfaces on the Crazyradio 2.0 so addresses of the endpoints should not be assumed,
 they should be fetched from the descriptor.
 
 At low level the USB protocol is handled by one OUT and one IN endpoint.
@@ -29,7 +29,7 @@ The application packets are not necessarily aligned on USB packets (though they 
 ## Protocol version
 
 The protocol, as described in this document, is the protocol version **0**.
-The version can be checked using the followind control transfer:
+The version can be checked using the following control transfer:
 
 | Field         | Value | Note                                    |
 |---------------|-------|-----------------------------------------|
@@ -54,7 +54,7 @@ Packets are transmitted one after each-other. First the size and then the data b
 
 If the stream does not fit in one 64 Bytes USB packet it continues in a subsequent packets.
 A non-full USB packet is only allowed at the end of a packet.
-The packet followind a non-full (less than 64 bytes long) packet must start with the length field of a new packet.
+The packet following a non-full (less than 64 bytes long) packet must start with the length field of a new packet.
 
 The Crazyradio will always send a non-full USB packet at the end of a stream. If the stream fits precisely in 64 bytes
 packets, an empty packet is sent after it.
@@ -66,6 +66,6 @@ stream to make sure the first bytes sent will be interpreted by the Crazyradio a
 a 0-length USB packet on the OUT endpoint. This should be done first by a USB driver before sending any application
 packets.
 
-The IN endpoint can be reset by receiving USB packet with a short timeout until either a timeout occures or a non-full
-packet (with a lenght bellow 64 bytes) is received. This guarantees that the next received USB packet will be
+The IN endpoint can be reset by receiving USB packets with a short timeout until either a timeout occurs or a non-full
+packet (with a length below 64 bytes) is received. This guarantees that the next received USB packet will be
 aligned with the length field.

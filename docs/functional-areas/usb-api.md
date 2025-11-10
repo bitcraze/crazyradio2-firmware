@@ -23,7 +23,7 @@ Never returns an error and does not check the params.
 
 ## Radio mode switch
 
-Crazyradio 2.0 implement exclusives radio mode: only one mode can be enabled at
+Crazyradio 2.0 implements exclusive radio modes: only one mode can be enabled at
 any one time. The radioMode module is responsible for managing the modes.
 
 The currently supported modes are:
@@ -67,7 +67,7 @@ Can return the following error:
 ## ESB radio
 
 The "Enhanced ShortBurst" radio module implements a radio protocol compatible
-with the nRF24 line of radio tranceiver from Nordic semiconductor. The
+with the nRF24 line of radio transceivers from Nordic Semiconductor. The
 implementation only handles the PRX mode of ESB. This protocol is used to
 communicate with the Crazyradio 2.x bootloader as well as its firmware.
 
@@ -80,19 +80,19 @@ Send a packet, wait for the ack and returns the status and payload of the ack.
 
 Parameters:
  - **channel**: Radio channel to send/receive the packet to/from. Must be between 0 and 100. Channel 0 corresponds to 2400MHz and 100 to 2500MHz.
- - **address**: ESB link address as a byte string. The lenght of the address must be 5 bytes.
+ - **address**: ESB link address as a byte string. The length of the address must be 5 bytes.
  - **Payload**: Payload as a byte string. Length of the payload can be from 0 to 32 bytes.
 
 Result:
- - **acked**: True if an acknoledgement packet has been received.
- - **ackPayload**: Payload received in the ack packer, as a byte string.
+ - **acked**: True if an acknowledgement packet has been received.
+ - **ackPayload**: Payload received in the ack packet, as a byte string.
  - **rssi**: Receive power as a positive integer. 25 means -25dBm. Valid range from the measurement is -90 to -20 dBm (values from 20 to 90).
 
 Can return the following errors:
  - `"NotInitialized"`: ESB module not enabled in the [radio mode](#radio-mode-switch) module.
  - `"BadRequest"`: Wrong format of the request param. This includes wrong CBOR format as well as the following condition:
     - Channel is not between 0 and 100 inclusive
-    - Address is not 5 byte long
+    - Address is not 5 bytes long
     - Payload is more than 32 bytes long
 
 ## Continuous wave
@@ -128,7 +128,7 @@ Can return the following errors:
 
 ## Radio power measurement
 
-The `powerMeasurement` radio mode allows to measure the amount of radio power seen on one channe.
+The `powerMeasurement` radio mode allows measuring the amount of radio power seen on one channel.
 It needs to be enabled as a radio mode before being used.
 
 ### powerMeasurement.measure_channel
@@ -145,19 +145,19 @@ Result:
  - **rssi**: Receive power as reported by the radio hardware.
              Needs to be negated to get the rssi in dBm. 
              For example `48` represents `-48 dBm`.
-             The valid range of measurement is 20 to 90 (ie. -90 dBm to -20 bBm).
+             The valid range of measurement is 20 to 90 (i.e. -90 dBm to -20 dBm).
 
 Can return the following errors:
  - `"NotInitialized"`: powerMeasurement module not enabled in the [radio mode](#radio-mode-switch) module.
  - `"BadRequest"`: Wrong format of the request param. This includes wrong CBOR format as well as the following condition:
     - Channel is not between 0 and 100 inclusive
 
-**Known bugs**: Currently only one measurement can be carried. The radio mode has to be switched to `esb` and back to `powerMeasurement` in order to measure again otherwise a boggus value will be returned.
+**Known bugs**: Currently only one measurement can be carried out. The radio mode has to be switched to `esb` and back to `powerMeasurement` in order to measure again otherwise a bogus value will be returned.
 
 ## Led control
 
 The RGB LED state can be controlled from the USB API.
-The LED will also be controlled by the firmware so this is motly intended as a debug functinonality:
+The LED will also be controlled by the firmware so this is mostly intended as a debug functionality:
 depending of the radio state there is no guarantee the LED state set with this API will stay.
 
 ### led.set
@@ -177,7 +177,7 @@ Can return the following errors:
 
 ## Button control
 
-The button state can be read form the API.
+The button state can be read from the API.
 
 ### button.get
 

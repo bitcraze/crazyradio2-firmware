@@ -55,7 +55,7 @@ void esb_set_arc(int value);
 
 /**
  * @brief Set if an ack will be received or not
- * @param enabled True to receive an ack after sending a packer. False to just send.
+ * @param enabled True to receive an ack after sending a packet. False to just send.
  * 
  * Setting ack_enabled to false is usually done to send broadcast packets
  */
@@ -86,15 +86,15 @@ struct esbPacket_s {
 } __attribute__((packed));
 
 /**
- * Send a packet and wait for and received an acknoledgement
+ * Send a packet and wait for and receive an acknowledgement
  * 
  * @param packet ESB packet to send
  * @param ack Structure that will be filled up with the ESB ack packet
  * @param rssi Pointer to a u8 that will be filled up with the ACK RSSI
- * @param retry Number of retry required to received an ack
+ * @param retry Number of retries required to receive an ack
  * 
  * @return true if an ack has been properly received, false otherwise. the parameters
- *         ack and rssi are only filled up if an ack has been recievde.
+ *         ack and rssi are only filled up if an ack has been received.
  * 
  * @note This function will always return false if ack_enabled has been set to false.
 */

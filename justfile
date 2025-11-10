@@ -35,7 +35,7 @@ fetch-python-dep:
 build:
     west build -b crazyradio2
 
-# Flash and resets Crazyradio to firmware mode using probe-rs
+# Flash and reset Crazyradio to firmware mode using probe-rs
 flash:
     west flash
     sleep 1

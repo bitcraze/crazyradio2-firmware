@@ -280,7 +280,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
     static int lossCounter = 0;
     static int ackLossCounter = 0;
 
-    // Drop packet ocasionally
+    // Drop packet occasionally
     if (CONFIG_ESB_PACKET_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_PACKET_LOSS_PERCENT) {
         lossCounter = 0;
 
@@ -373,7 +373,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         *rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
         *retry = arc_counter - 1;
 
-        // Drop ack packet ocasionally
+        // Drop ack packet occasionally
         if (CONFIG_ESB_ACK_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_ACK_LOSS_PERCENT) {
             ackLossCounter = 0;
             k_mutex_unlock(&radio_busy);
