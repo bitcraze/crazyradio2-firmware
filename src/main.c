@@ -26,7 +26,11 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
 
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/usb/usb_device.h>
+#include <zephyr/usb/usb_ch9.h>
+
+#include <app_version.h>
 
 #include "radio_mode.h"
 #include "led.h"
@@ -38,7 +42,13 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
-int startHFClock(void)
+/** USB Device release number (bcdDevice Descriptor field), set to firmware version */
+#define USB_BCD_APP_DRN		(USB_DEC_TO_BCD(APP_VERSION_MAJOR) << 8 | \
+				 USB_DEC_TO_BCD(APP_VERSION_MINOR))
+
+static void set_usb_app_version(void);
+
+static int startHFClock(void)
 {
     nrfx_clock_hfclk_start();
 	return 0;
@@ -47,6 +57,7 @@ int startHFClock(void)
 int main(void)
 {
     LOG_INF("Staring %s on target %s", CONFIG_KERNEL_BIN_NAME, CONFIG_BOARD_TARGET);
+	LOG_INF("Firmware version: %s", APP_VERSION_STRING);
 
     // HFCLK crystal is needed by the radio and USB
     startHFClock();
@@ -75,7 +86,10 @@ int main(void)
 	LOG_DBG("LNA enabled: %d", enabled);
 	fem_rxen_set(false);
 
-    int ret = usb_enable(NULL);
+	set_usb_app_version();
+    
+	// Initialize USB device stack
+	int ret = usb_enable(NULL);
 	if (ret != 0) {
 		LOG_ERR("Failed to enable USB");
 		return -1;
@@ -88,4 +102,15 @@ int main(void)
 	}
 
 	return 0;
+}
+
+extern struct usb_desc_header __usb_descriptor_start[];
+
+static void set_usb_app_version(void)
+{
+	struct usb_device_descriptor *dev_desc;
+	const uint8_t *descriptors = (const uint8_t *)__usb_descriptor_start;
+
+	dev_desc = (void *)descriptors;
+	dev_desc->bcdDevice = sys_cpu_to_le16(USB_BCD_APP_DRN);
 }
