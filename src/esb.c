@@ -288,8 +288,8 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
 
         return false;
     } else {
-        // Handling packet PID
-        packet->s1 = (pid<<1);
+        // Handling packet PID. S1 format is | PID(2) | ACK flag |
+        packet->s1 = ((pid & 0x03)<<1) | 1;
         pid++;
 
         bool ack_received = false;
