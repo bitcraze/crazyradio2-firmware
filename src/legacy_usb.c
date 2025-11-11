@@ -18,14 +18,41 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
-struct usb_command {
+enum command_type {
+    command_data,
+    command_setup,
+};
+
+char* command_type_name[] = {
+    "data",
+    "setup",
+};
+
+struct data_command {
     char payload[64];
     uint32_t length;
 };
 
+struct setup_command {
+    struct usb_setup_packet setup_packet;
+    uint32_t length;
+    char data[16];
+};
+
+struct usb_command {
+    enum command_type type;
+    union {
+        struct data_command data;
+        struct setup_command setup;
+    };
+};
+
 K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
 
+K_MUTEX_DEFINE(usb_radio_mutex);
+
 static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
+static void handle_vendor_command(struct setup_command* setup);
 
 // state
 static struct {
@@ -86,14 +113,16 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
     uint32_t bytes_to_read;
     static struct usb_command command;
 
-	usb_read(ep, NULL, 0, &bytes_to_read);
+    command.type = command_data;
+	
+    usb_read(ep, NULL, 0, &bytes_to_read);
 	LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
     if (bytes_to_read > 64) {
         bytes_to_read = 64;
     }
-	usb_read(ep, command.payload, bytes_to_read, NULL);
+	usb_read(ep, command.data.payload, bytes_to_read, NULL);
 
-	command.length = bytes_to_read;
+	command.data.length = bytes_to_read;
 
     k_msgq_put(&command_queue, &command, K_FOREVER);
 
@@ -143,64 +172,58 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
 {
 	LOG_DBG("Class request: bRequest 0x%x bmRequestType 0x%x len %d",
 		setup->bRequest, setup->bmRequestType, *len);
-	
+
+    static struct usb_command command;
+
 	if (USB_REQTYPE_GET_TYPE(setup->bmRequestType) == USB_REQTYPE_TYPE_VENDOR) {
-		
-		if (setup->bRequest == SET_RADIO_CHANNEL && setup->wLength == 0) {
-			LOG_DBG("Setting radio channel %d", setup->wValue);
-			uint16_t channel = setup->wValue;
-			if (channel <= 100) {
-				esb_set_channel(channel);
-			}
-			// If channel >100 used, packets will be ignored (ie. virtually not acked)
-			state.channel = channel;
-		} else if (setup->bRequest == SET_RADIO_ADDRESS && setup->wLength == 5) {
-			LOG_DBG("Setting radio address %02x%02x%02x%02x%02x", (unsigned int)(*data)[0], (unsigned int)(*data)[1], (unsigned int)(*data)[2], (unsigned int)(*data)[3], (unsigned int)(*data)[4]);
-			esb_set_address(*data);
-		} else if (setup->bRequest == SET_DATA_RATE && setup->wLength == 0 && setup->wValue < 3) {
-			char* datarates[] = {"250K", "1M", "2M"};
-			LOG_DBG("Setting radio datarate to %s", datarates[setup->wValue]);
-			uint32_t datarate = setup->wValue;
-            if (datarate == 1) {
-				esb_set_bitrate(radioBitrate1M);
-            } else if (datarate == 2) {
-                esb_set_bitrate(radioBitrate2M);
+        LOG_DBG("Vendor request: bRequest 0x%x bmRequestType 0x%x len %d",
+                setup->bRequest, setup->bmRequestType, *len);
+
+        if (setup->bRequest == SET_RADIO_CHANNEL ||
+            setup->bRequest == SET_RADIO_ADDRESS ||
+            setup->bRequest == SET_DATA_RATE ||
+            setup->bRequest == SET_RADIO_POWER ||
+            setup->bRequest == SET_RADIO_ARD ||
+            setup->bRequest == SET_RADIO_ARC ||
+            setup->bRequest == ACK_ENABLE ||
+            setup->bRequest == SET_CONT_CARRIER ||
+            setup->bRequest == SET_MODE ) {
+            
+            LOG_DBG("Queuing command %d", setup->bRequest);
+
+
+            command.type = command_setup;
+            uint32_t length = *len;
+            memcpy(&command.setup.setup_packet, setup, sizeof(struct usb_setup_packet));
+            if (length > sizeof(command.setup.data)) {
+                length = sizeof(command.setup.data);
             }
-			// If 250K is selected, packets will be ignored (ie. virtually not acked)
-			state.datarate = datarate;
-		} else if (setup->bRequest == SET_RADIO_POWER && setup->wLength == 0) {
-			LOG_DBG("Setting radio power %d", setup->wValue);
-            uint8_t power = MIN(setup->wValue, 3);
-            uint8_t fem_power = power_mapping[power];
-            fem_set_power(fem_power);
-		} else if (setup->bRequest == SET_RADIO_ARD && setup->wLength == 0) {
-			LOG_DBG("Setting radio ARD %d", setup->wValue);
-		} else if (setup->bRequest == SET_RADIO_ARC && setup->wLength == 0) {
-			LOG_DBG("Setting radio ARC %d", setup->wValue & 0x0f);
-            esb_set_arc(setup->wValue & 0x0f);
-		} else if (setup->bRequest == ACK_ENABLE && setup->wLength == 0) {
-            bool enabled = setup->wValue != 0;
-			LOG_DBG("Setting radio ACK Enable %s", enabled?"true":"false");
-            state.ack_enabled = enabled;
-            esb_set_ack_enabled(enabled);
-		} else if (setup->bRequest == SET_CONT_CARRIER && setup->wLength == 0) {
-			LOG_DBG("Setting radio Continious carrier %s", setup->wValue?"true":"false");
-            bool enable = setup->wValue != 0;
-            esb_set_continuous_carrier(enable);
-        } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_device(setup)) {
+            if (usb_reqtype_is_to_device(setup) && length > 0)
+            {
+                memcpy(command.setup.data, *data, length);
+                command.setup.length = length;
+            }
+            k_msgq_put(&command_queue, &command, K_FOREVER);
+        } 
+        else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_device(setup)) {
+            k_mutex_lock(&usb_radio_mutex, K_FOREVER);
             uint8_t start = setup->wValue;
             uint8_t stop = setup->wIndex;
-            fw_scan(start, stop, *data,setup->wLength);
+            fw_scan(start, stop, *data, setup->wLength);
+            k_mutex_unlock(&usb_radio_mutex);
         } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_host(setup)) {
             *data = state.scan_result;
             *len = MIN(state.scan_result_length, setup->wLength);
-		} else if (setup->bRequest == SET_MODE && setup->wLength == 0) {
-			LOG_DBG("Setting radio Mode %d", setup->wValue);
-        } else if (setup->bRequest == RESET_TO_BOOTLOADER && setup->wLength == 0) {
+        }
+        else if (setup->bRequest == RESET_TO_BOOTLOADER) {
+            LOG_DBG("Vendor request: RESET_TO_BOOTLOADER");
             system_reset_to_uf2();
-		} else {
-			return -ENOTSUP;
-		}
+        } else {
+            return -ENOTSUP;
+
+        }
+        
+		return 0;
     }
 
 	return 0;
@@ -249,64 +272,70 @@ static void usb_thread(void *, void *, void *) {
     while(1) {
         k_msgq_get(&command_queue, &command, K_FOREVER);
 
-        // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
-        // this means that the buffer actually contains 2 packets to send
-        if (!state.ack_enabled && command.length > 32) {
-            // Send the first one right away
-            memcpy(packet.data, command.payload, command.length/2);
-            packet.length = command.length/2;
-            esb_send_packet(&packet, &ack, &rssi, &arc_counter);
+        k_mutex_lock(&usb_radio_mutex, K_FOREVER);
+        if (command.type == command_data) {
+            // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
+            // this means that the buffer actually contains 2 packets to send
+            if (!state.ack_enabled && command.data.length > 32) {
+                // Send the first one right away
+                memcpy(packet.data, command.data.payload, command.data.length/2);
+                packet.length = command.data.length/2;
+                esb_send_packet(&packet, &ack, &rssi, &arc_counter);
 
-            // And prepare the second one to be send by the normal execution flow
-            memcpy(packet.data, &command.payload[command.length/2], command.length/2);
-            packet.length = command.length/2;
-        } else {
-            // Otherwise, cap to 32 bytes and prepare the unicast packets
-            if (command.length > 32) {
-                command.length = 32;
+                // And prepare the second one to be send by the normal execution flow
+                memcpy(packet.data, &command.data.payload[command.data.length/2], command.data.length/2);
+                packet.length = command.data.length/2;
+            } else {
+                // Otherwise, cap to 32 bytes and prepare the unicast packets
+                if (command.data.length > 32) {
+                    command.data.length = 32;
+                }
+                memcpy(packet.data, command.data.payload, command.data.length);
+                packet.length = command.data.length;
             }
-            memcpy(packet.data, command.payload, command.length);
-            packet.length = command.length;
-        }
-        
-        if (state.datarate != 0 && state.channel <= 100) {
-            bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
-            if (ack.length > 32) {
-                LOG_DBG("Got an ack of size %d!", ack.length);
-            }
-            if (!state.ack_enabled) {
-                led_pulse_green(K_MSEC(50));
-            } else if (acked && ack.length <= 32) {
-                static char usb_answer[33];
-                usb_answer[0] = (arc_counter & 0x0f) << 4 | (rssi < 64)<<1 | 1;
-                memcpy(&usb_answer[1], ack.data, ack.length);
             
-                if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
-                    LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+            if (state.datarate != 0 && state.channel <= 100) {
+                bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
+                if (ack.length > 32) {
+                    LOG_DBG("Got an ack of size %d!", ack.length);
+                }
+                if (!state.ack_enabled) {
+                    led_pulse_green(K_MSEC(50));
+                } else if (acked && ack.length <= 32) {
+                    static char usb_answer[33];
+                    usb_answer[0] = (arc_counter & 0x0f) << 4 | (rssi < 64)<<1 | 1;
+                    memcpy(&usb_answer[1], ack.data, ack.length);
+                
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+
+                    led_pulse_green(K_MSEC(50));
+                } else {
+                    char no_ack_answer[1] = {0};
+            
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+
+                    led_pulse_red(K_MSEC(50));
                 }
 
-                led_pulse_green(K_MSEC(50));
             } else {
+                LOG_DBG("Not sending, radio settings not handled!");
                 char no_ack_answer[1] = {0};
-        
+            
                 if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
                     LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
                 }
 
                 led_pulse_red(K_MSEC(50));
             }
-
-        } else {
-            LOG_DBG("Not sending, radio settings not handled!");
-            char no_ack_answer[1] = {0};
-        
-            if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
-                LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-            }
-
-            led_pulse_red(K_MSEC(50));
+        } else if (command.type == command_setup) {
+            LOG_DBG("Handling setup command %d", command.setup.setup_packet.bRequest);
+            handle_vendor_command(&command.setup);
         }
-
+        k_mutex_unlock(&usb_radio_mutex);
     }
 }
 
@@ -340,5 +369,52 @@ static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length) {
         } else {
             led_pulse_red(K_MSEC(50));
         }
+    }
+}
+
+static void handle_vendor_command(struct setup_command* setup) {
+    if (setup->setup_packet.bRequest == SET_RADIO_CHANNEL && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio channel %d", setup->setup_packet.wValue);
+        uint16_t channel = setup->setup_packet.wValue;
+        if (channel <= 100) {
+            esb_set_channel(channel);
+        }
+        // If channel >100 used, packets will be ignored (ie. virtually not acked)
+        state.channel = channel;
+    } else if (setup->setup_packet.bRequest == SET_RADIO_ADDRESS && setup->setup_packet.wLength == 5) {
+        LOG_DBG("Setting radio address %02x%02x%02x%02x%02x", (unsigned int)(setup->data)[0], (unsigned int)(setup->data)[1], (unsigned int)(setup->data)[2], (unsigned int)(setup->data)[3], (unsigned int)(setup->data)[4]);
+        esb_set_address(setup->data);
+    } else if (setup->setup_packet.bRequest == SET_DATA_RATE && setup->setup_packet.wLength == 0 && setup->setup_packet.wValue < 3) {
+        char* datarates[] = {"250K", "1M", "2M"};
+        LOG_DBG("Setting radio datarate to %s", datarates[setup->setup_packet.wValue]);
+        uint32_t datarate = setup->setup_packet.wValue;
+        if (datarate == 1) {
+            esb_set_bitrate(radioBitrate1M);
+        } else if (datarate == 2) {
+            esb_set_bitrate(radioBitrate2M);
+        }
+        // If 250K is selected, packets will be ignored (ie. virtually not acked)
+        state.datarate = datarate;
+    } else if (setup->setup_packet.bRequest == SET_RADIO_POWER && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio power %d", setup->setup_packet.wValue);
+        uint8_t power = MIN(setup->setup_packet.wValue, 3);
+        uint8_t fem_power = power_mapping[power];
+        fem_set_power(fem_power);
+    } else if (setup->setup_packet.bRequest == SET_RADIO_ARD && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio ARD %d", setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_RADIO_ARC && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio ARC %d", setup->setup_packet.wValue & 0x0f);
+        esb_set_arc(setup->setup_packet.wValue & 0x0f);
+    } else if (setup->setup_packet.bRequest == ACK_ENABLE && setup->setup_packet.wLength == 0) {
+        bool enabled = setup->setup_packet.wValue != 0;
+        LOG_DBG("Setting radio ACK Enable %s", enabled?"true":"false");
+        state.ack_enabled = enabled;
+        esb_set_ack_enabled(enabled);
+    } else if (setup->setup_packet.bRequest == SET_CONT_CARRIER && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio Continious carrier %s", setup->setup_packet.wValue?"true":"false");
+        bool enable = setup->setup_packet.wValue != 0;
+        esb_set_continuous_carrier(enable);
+    } else if (setup->setup_packet.bRequest == SET_MODE && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio Mode %d", setup->setup_packet.wValue);
     }
 }
