@@ -50,6 +50,8 @@ static uint8_t pid = 0;
 static struct esbPacket_s * ackBuffer;
 static bool ack_enabled = true;
 static int arc = 3;
+static int packet_loss_percent = 0;
+static int ack_loss_percent = 0;
 
 static bool continuous_carrier_enabled = false;
 
@@ -265,6 +267,14 @@ void esb_set_address(uint8_t address[5])
     k_mutex_unlock(&radio_busy);
 }
 
+void esb_set_packet_loss_simulation(uint8_t packet_loss, uint8_t ack_loss)
+{
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    packet_loss_percent = packet_loss;
+    ack_loss_percent = ack_loss;
+    k_mutex_unlock(&radio_busy);
+}
+
 bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8_t *rssi, uint8_t* retry)
 {
     if (!isInit) {
@@ -281,7 +291,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
     static int ackLossCounter = 0;
 
     // Drop packet occasionally
-    if (CONFIG_ESB_PACKET_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_PACKET_LOSS_PERCENT) {
+    if (packet_loss_percent != 0 && (sys_rand32_get() % 100) < packet_loss_percent) {
         lossCounter = 0;
 
         k_mutex_unlock(&radio_busy);
@@ -374,7 +384,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         *retry = arc_counter - 1;
 
         // Drop ack packet occasionally
-        if (CONFIG_ESB_ACK_LOSS_PERCENT != 0 && (sys_rand32_get() % 100) < CONFIG_ESB_ACK_LOSS_PERCENT) {
+        if (ack_loss_percent != 0 && (sys_rand32_get() % 100) < ack_loss_percent) {
             ackLossCounter = 0;
             k_mutex_unlock(&radio_busy);
             return false;

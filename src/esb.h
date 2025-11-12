@@ -112,3 +112,12 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
  */
 bool esb_set_continuous_carrier(bool enable);
 
+/**
+ * @brief Set packet loss simulation parameters
+ * 
+ * This function allows to simulate packet loss for testing purposes.
+ * 
+ * @param packet_loss_percent Percentage of packets to drop (0-100)
+ * @param ack_loss_percent Percentage of acks to drop (0-100)
+ */
+void esb_set_packet_loss_simulation(uint8_t packet_loss_percent, uint8_t ack_loss_percent);
