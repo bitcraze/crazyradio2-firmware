@@ -116,7 +116,7 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
     command.type = command_data;
 	
     usb_read(ep, NULL, 0, &bytes_to_read);
-	LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
+	// LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
     if (bytes_to_read > 64) {
         bytes_to_read = 64;
     }
@@ -155,6 +155,7 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_CONT_CARRIER  0x20
 #define CHANNEL_SCANN     0x21
 #define SET_MODE          0x22
+#define SET_PACKET_LOSS_SIMULATION 0x30
 #define RESET_TO_BOOTLOADER 0xff
 
 // nRF24 power mapping
@@ -187,7 +188,8 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             setup->bRequest == SET_RADIO_ARC ||
             setup->bRequest == ACK_ENABLE ||
             setup->bRequest == SET_CONT_CARRIER ||
-            setup->bRequest == SET_MODE ) {
+            setup->bRequest == SET_MODE ||
+            setup->bRequest == SET_PACKET_LOSS_SIMULATION) {
             
             LOG_DBG("Queuing command %d", setup->bRequest);
 
@@ -416,5 +418,12 @@ static void handle_vendor_command(struct setup_command* setup) {
         esb_set_continuous_carrier(enable);
     } else if (setup->setup_packet.bRequest == SET_MODE && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Mode %d", setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_PACKET_LOSS_SIMULATION && setup->setup_packet.wLength == 2) {
+        uint8_t packet_loss_percent = setup->data[0];
+        uint8_t ack_loss_percent = setup->data[1];
+        LOG_DBG("Setting packet loss simulation: packet loss %d%%, ack loss %d%%", packet_loss_percent, ack_loss_percent);
+        esb_set_packet_loss_simulation(packet_loss_percent, ack_loss_percent);
+    } else {
+        LOG_DBG("Unhandled vendor command %d", setup->setup_packet.bRequest);
     }
 }

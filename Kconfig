@@ -1,11 +1,6 @@
 
 menu "Crazyradio 2.0 firmware"
 
-config ESB_PACKET_LOSS_PERCENT
-   int "Percent of generated packet loss, between 0 and 100"
-   range 0 100
-   default 0
-
 config ESB_ACK_LOSS_PERCENT
    int "Percent of generated ack loss, between 0 and 100"
    range 0 100
