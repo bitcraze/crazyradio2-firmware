@@ -32,7 +32,6 @@
 
 #include <app_version.h>
 
-#include "radio_mode.h"
 #include "led.h"
 #include "fem.h"
 #include "esb.h"
