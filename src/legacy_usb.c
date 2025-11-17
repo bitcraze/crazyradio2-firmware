@@ -61,10 +61,12 @@ static struct {
     bool ack_enabled;
     uint8_t scan_result[63];
     int scan_result_length;
+    bool inline_mode;
 } state = {
     .datarate = 2,
-	.channel = 2,
+	.channel = 42,
     .ack_enabled = true,
+    .inline_mode = false,
 };
 
 #define CRAZYRADIO_NUM_EP 2
@@ -155,6 +157,7 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_CONT_CARRIER  0x20
 #define CHANNEL_SCANN     0x21
 #define SET_MODE          0x22
+#define SET_INLINE_MODE   0x23
 #define SET_PACKET_LOSS_SIMULATION 0x30
 #define RESET_TO_BOOTLOADER 0xff
 
@@ -189,6 +192,7 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             setup->bRequest == ACK_ENABLE ||
             setup->bRequest == SET_CONT_CARRIER ||
             setup->bRequest == SET_MODE ||
+            (setup->bRequest == SET_INLINE_MODE && setup->wValue < 2) ||
             setup->bRequest == SET_PACKET_LOSS_SIMULATION) {
             
             LOG_DBG("Queuing command %d", setup->bRequest);
@@ -276,9 +280,23 @@ static void usb_thread(void *, void *, void *) {
 
         k_mutex_lock(&usb_radio_mutex, K_FOREVER);
         if (command.type == command_data) {
-            // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
-            // this means that the buffer actually contains 2 packets to send
-            if (!state.ack_enabled && command.data.length > 32) {
+            
+            if (state.inline_mode) {
+                state.channel = command.data.payload[0];
+                esb_set_channel(state.channel);
+                state.datarate = command.data.payload[1];
+                esb_set_bitrate(state.datarate);
+                state.ack_enabled = command.data.payload[2];
+                esb_set_ack_enabled(state.ack_enabled);
+                esb_set_address(&command.data.payload[3]);
+                // Prepare the packet data
+                if (command.data.length > 32+8) {
+                    command.data.length = 32+8;
+                }
+                memcpy(packet.data, &command.data.payload[8], command.data.length-8);
+            } else if (!state.ack_enabled && command.data.length > 32) {
+                // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
+                // this means that the buffer actually contains 2 packets to send
                 // Send the first one right away
                 memcpy(packet.data, command.data.payload, command.data.length/2);
                 packet.length = command.data.length/2;
@@ -418,6 +436,9 @@ static void handle_vendor_command(struct setup_command* setup) {
         esb_set_continuous_carrier(enable);
     } else if (setup->setup_packet.bRequest == SET_MODE && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Mode %d", setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_INLINE_MODE && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio Inline Mode %d", setup->setup_packet.wValue);
+        state.inline_mode = setup->setup_packet.wValue != 0;
     } else if (setup->setup_packet.bRequest == SET_PACKET_LOSS_SIMULATION && setup->setup_packet.wLength == 2) {
         uint8_t packet_loss_percent = setup->data[0];
         uint8_t ack_loss_percent = setup->data[1];

@@ -56,7 +56,8 @@ acknowledge is disabled there is no IN transaction.
 To send a packet, the following sequence must be followed:
 
 -   Send the packet to EP1\_OUT. Its length should be between 1 to 32
-    Bytes
+    Bytes. If Inline mode is enabled, the packet payload is prepended by
+    radio settings (see [Inline setting mode](#inline-settings-mode))
 -   Read the ACK from EP1\_IN. The first byte is the transfer status and
     the following bytes are the content of the ACK payload, if any.
 
@@ -87,6 +88,7 @@ Crazyradio vendor requests summary:
 |  0x40           | SET\_CONT\_CARRIER (0x20)     | Active     | Zero    | Zero     | None|
 |  0x40           | START\_SCAN\_CHANNELS (0x21)  | Start      | Stop    | Length   | Packet|
 |  0xC0           | GET\_SCAN\_CHANNELS (0x21)    | Zero       | Zero    | 63       | Result|
+|  0x40           | SET_INLINE_MODE               | Active     | Zero    | Zero     | None |
 |  0x40           | SET_PACKET_LOSS_SIMULATION    | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
@@ -263,6 +265,36 @@ see [ticket
 \#9](https://github.com/bitcraze/crazyradio-firmware/issues/9) in the
 Crazyradio firmware project. If a buffer of more than 63 bytes is
 returned, it means that no channel have been received.
+
+---
+### Inline settings mode
+
+|  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
+|  ---------------| ---------------------------| --------| --------| ---------| ------ |
+|  0x40           | SET_INLINE_MODE            | Active  | Zero    | Zero     | None   |
+
+This mode allows send radio configuration together with packet payload on the OUT endpoint.
+This makes the communication with multiple PRX much more efficient!
+
+|  Active values   | Meaning|
+|  --------------- | ----------------------------------------------------------- |
+|  0               | Inline mode deactivated (default)                           |
+|  1               | Inline mode enabled                                         |
+|  ...             | Reserved, STALL the setup phase                             |
+
+When enabled, the data format on the OUT endpoint becomes:
+
+| position | Length (byte) | Description                               |
+| -------- | ------------- | ----------------------------------------- |
+| 0        | 1             | Radio channel (Between 0 and 100)         |
+| 1        | 1             | Datarate (1 for 1Mbps, 2 for 2Mbps)       |
+| 2        | 1             | Ack enabled (1 for enable, 0 for disable) |
+| 3        | 5             | Radio address                             |
+| 8        | 1..32         | Radio packet payload                      |
+
+The settings are applied in the same way as if they where set using setup commands:
+they replace any other settings that has been made before and will stick to be
+used by future packet if inline mode is disabled.
 
 ---
 
