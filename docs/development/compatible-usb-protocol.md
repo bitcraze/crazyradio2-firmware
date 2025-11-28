@@ -107,6 +107,10 @@ completed, which takes about 1ms. The new frequency is going to be used
 for the following transferred packets. The default value for the radio
 channel is 2.
 
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
+
 ### Set radio address
 
 |  bmRequestType  | bRequest                    | wValue   | wIndex  | wLength  | data    |
@@ -126,6 +130,10 @@ nRF24LU1 documentation:
 
 The default address is 0xE7E7E7E7E7.
 
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
+
 ### Set data rate
 
 |  bmRequestType  | bRequest                | wValue     | wIndex  | wLength  | data   |
@@ -139,6 +147,10 @@ Possible values for the data rate:
 |  0       250Kbps
 |  1       1MBps
 |  2       2Mbps (Default)
+
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
 
 ### Set radio power
 
@@ -210,6 +222,10 @@ and there is no guarantee that it has been correctly received.
 |  0              | Auto ACK deactivated|
 |  Not 0          | Auto ACK enable (default)|
 
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
+
 ### Continuous carrier mode
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data  |
@@ -271,9 +287,9 @@ returned, it means that no channel have been received.
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
 |  ---------------| ---------------------------| --------| --------| ---------| ------ |
-|  0x40           | SET_INLINE_MODE            | Active  | Zero    | Zero     | None   |
+|  0x40           | SET_INLINE_MODE (0x23)     | Active  | Zero    | Zero     | None   |
 
-This mode allows send radio configuration together with packet payload on the OUT endpoint.
+This mode allows sending radio configuration together with packet payload on the OUT endpoint.
 This makes the communication with multiple PRX much more efficient!
 
 |  Active values   | Meaning|
@@ -284,17 +300,35 @@ This makes the communication with multiple PRX much more efficient!
 
 When enabled, the data format on the OUT endpoint becomes:
 
-| position | Length (byte) | Description                               |
-| -------- | ------------- | ----------------------------------------- |
-| 0        | 1             | Radio channel (Between 0 and 100)         |
-| 1        | 1             | Datarate (1 for 1Mbps, 2 for 2Mbps)       |
-| 2        | 1             | Ack enabled (1 for enable, 0 for disable) |
-| 3        | 5             | Radio address                             |
-| 8        | 1..32         | Radio packet payload                      |
+**OUT endpoint format (host to device):**
 
-The settings are applied in the same way as if they where set using setup commands:
-they replace any other settings that has been made before and will stick to be
-used by future packet if inline mode is disabled.
+| Byte position | Length (bytes) | Description                               |
+| ------------- | -------------- | ----------------------------------------- |
+| 0             | 1              | Total length (including this header)      |
+| 1             | 1              | Datarate (bits 0-1: 0=250kbps, 1=1Mbps, 2=2Mbps)<br>Ack enabled (bit 4: 0=disabled, 1=enabled) |
+| 2             | 1              | Radio channel (0-100)                     |
+| 3-7           | 5              | Radio address (5 bytes)                   |
+| 8+            | 0-32           | Radio packet payload                      |
+
+**IN endpoint format (device to host):**
+
+After sending a packet in inline mode, the response format on the IN endpoint is:
+
+| Byte position | Length (bytes) | Description                               |
+| ------------- | -------------- | ----------------------------------------- |
+| 0             | 1              | Total length (including this header)      |
+| 1             | 1              | Ack received (bit 0: 0=no ack, 1=ack received)<br>RSSI < -64dBm (bit 1: 0=strong signal, 1=weak signal)<br>Invalid settings (bit 2: 0=valid, 1=invalid settings)<br>Retransmission count (bits 4-7: 0-15) |
+| 2+            | 0-32           | ACK payload data (if any)                 |
+
+**Settings validation:**
+
+Invalid settings that are not handled by Crazyradio 2 (causing invalid_settings flag to be set):
+- Datarate value of 0 (250kbps is not handled by Crazyradio 2.0)
+- Channel value greater than 100
+
+The settings are applied in the same way as if they were set using setup commands:
+they replace any other settings that have been made before and will stick to be
+used by future packets if inline mode is disabled.
 
 ---
 

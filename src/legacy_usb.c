@@ -62,12 +62,34 @@ static struct {
     uint8_t scan_result[63];
     int scan_result_length;
     bool inline_mode;
+    char usb_answer[64];
 } state = {
     .datarate = 2,
 	.channel = 42,
     .ack_enabled = true,
     .inline_mode = false,
 };
+
+// Inline mode out header
+typedef struct {
+    uint8_t length;        // Full length including this header
+    uint8_t datarate: 2;
+    uint8_t reserved_0: 2;
+    uint8_t ack_enabled: 1;
+    uint8_t reserved_1: 3;
+    uint8_t channel;
+    uint8_t address[5];
+} __attribute__((packed)) inline_mode_out_header;
+
+// Inline mode in header
+typedef struct {
+    uint8_t length;
+    uint8_t ack_received: 1;
+    uint8_t rssi_lt_64dbm: 1;
+    uint8_t invalid_settings: 1;
+    uint8_t reserved: 1;
+    uint8_t arc_counter: 4;
+} __attribute__((packed)) inline_mode_in_header;
 
 #define CRAZYRADIO_NUM_EP 2
 #define CRAZYRADIO_OUT_EP_ADDR 0x01
@@ -282,18 +304,24 @@ static void usb_thread(void *, void *, void *) {
         if (command.type == command_data) {
             
             if (state.inline_mode) {
-                state.channel = command.data.payload[0];
+                // Get the header
+                inline_mode_out_header *header = (inline_mode_out_header *)command.data.payload;
+                state.channel = header->channel;
                 esb_set_channel(state.channel);
-                state.datarate = command.data.payload[1];
+                state.datarate = header->datarate;
                 esb_set_bitrate(state.datarate);
-                state.ack_enabled = command.data.payload[2];
+                state.ack_enabled = header->ack_enabled;
                 esb_set_ack_enabled(state.ack_enabled);
-                esb_set_address(&command.data.payload[3]);
+                esb_set_address(header->address);
                 // Prepare the packet data
-                if (command.data.length > 32+8) {
-                    command.data.length = 32+8;
+                int payload_length = header->length - sizeof(inline_mode_out_header);
+                if (payload_length > 32+8) {
+                    payload_length = 32+8;
                 }
-                memcpy(packet.data, &command.data.payload[8], command.data.length-8);
+                memcpy(packet.data, &command.data.payload[sizeof(inline_mode_out_header)], payload_length);
+                packet.length = payload_length;
+
+                LOG_ERR("Inline mode packet: chan %d, dr %d, ack %d, addr %02x%02x%02x%02x%02x, len %d", state.channel, state.datarate, state.ack_enabled, header->address[0], header->address[1], header->address[2], header->address[3], header->address[4], payload_length);
             } else if (!state.ack_enabled && command.data.length > 32) {
                 // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
                 // this means that the buffer actually contains 2 packets to send
@@ -315,31 +343,58 @@ static void usb_thread(void *, void *, void *) {
             }
             
             if (state.datarate != 0 && state.channel <= 100) {
-                bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
-                if (ack.length > 32) {
-                    LOG_DBG("Got an ack of size %d!", ack.length);
-                }
-                if (!state.ack_enabled) {
-                    led_pulse_green(K_MSEC(50));
-                } else if (acked && ack.length <= 32) {
-                    static char usb_answer[33];
-                    usb_answer[0] = (arc_counter & 0x0f) << 4 | (rssi < 64)<<1 | 1;
-                    memcpy(&usb_answer[1], ack.data, ack.length);
                 
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
+                // Send the packet
+                bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
 
+                if (acked) {
                     led_pulse_green(K_MSEC(50));
                 } else {
-                    char no_ack_answer[1] = {0};
-            
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
-
                     led_pulse_red(K_MSEC(50));
                 }
+
+                if (ack.length > 32) {
+                    LOG_ERR("Got an ack of size %d!", ack.length);
+                    ack.length = 32;
+                }
+
+                if (state.inline_mode) {
+                    // Prepare the inline mode header
+                    inline_mode_in_header *usb_header = (inline_mode_in_header *)state.usb_answer;
+                    usb_header->length = ack.length + sizeof(inline_mode_in_header);
+                    usb_header->ack_received = acked ? 1 : 0;
+                    usb_header->rssi_lt_64dbm = (rssi < 64) ? 1 : 0;
+                    usb_header->invalid_settings = (state.datarate == 0 || state.channel > 100) ? 1 : 0;
+                    usb_header->arc_counter = arc_counter & 0x0f;
+
+                    // Shift the ack data
+                    if (ack.length > 0) {
+                        memcpy(&state.usb_answer[sizeof(inline_mode_in_header)], ack.data, ack.length);
+                    }
+
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, usb_header->length, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+                } else {
+                    if (!state.ack_enabled) {
+                        led_pulse_green(K_MSEC(50));
+                    } else if (acked && ack.length <= 32) {
+                        static char usb_answer[33];
+                        usb_answer[0] = (arc_counter & 0x0f) << 4 | (rssi < 64)<<1 | 1;
+                        memcpy(&usb_answer[1], ack.data, ack.length);
+                    
+                        if (usb_write(CRAZYRADIO_IN_EP_ADDR, usb_answer, ack.length + 1, NULL)) {
+                            LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                        }
+                    } else {
+                        char no_ack_answer[1] = {0};
+                
+                        if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
+                            LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                        }
+                    }
+                }
+                
 
             } else {
                 LOG_DBG("Not sending, radio settings not handled!");
@@ -401,9 +456,13 @@ static void handle_vendor_command(struct setup_command* setup) {
         }
         // If channel >100 used, packets will be ignored (ie. virtually not acked)
         state.channel = channel;
+        // Reset inline mode
+        state.inline_mode = false;
     } else if (setup->setup_packet.bRequest == SET_RADIO_ADDRESS && setup->setup_packet.wLength == 5) {
         LOG_DBG("Setting radio address %02x%02x%02x%02x%02x", (unsigned int)(setup->data)[0], (unsigned int)(setup->data)[1], (unsigned int)(setup->data)[2], (unsigned int)(setup->data)[3], (unsigned int)(setup->data)[4]);
         esb_set_address(setup->data);
+        // Reset inline mode
+        state.inline_mode = false;
     } else if (setup->setup_packet.bRequest == SET_DATA_RATE && setup->setup_packet.wLength == 0 && setup->setup_packet.wValue < 3) {
         char* datarates[] = {"250K", "1M", "2M"};
         LOG_DBG("Setting radio datarate to %s", datarates[setup->setup_packet.wValue]);
@@ -415,6 +474,8 @@ static void handle_vendor_command(struct setup_command* setup) {
         }
         // If 250K is selected, packets will be ignored (ie. virtually not acked)
         state.datarate = datarate;
+        // Reset inline mode
+        state.inline_mode = false;
     } else if (setup->setup_packet.bRequest == SET_RADIO_POWER && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio power %d", setup->setup_packet.wValue);
         uint8_t power = MIN(setup->setup_packet.wValue, 3);
@@ -430,6 +491,8 @@ static void handle_vendor_command(struct setup_command* setup) {
         LOG_DBG("Setting radio ACK Enable %s", enabled?"true":"false");
         state.ack_enabled = enabled;
         esb_set_ack_enabled(enabled);
+        // Reset inline mode
+        state.inline_mode = false;
     } else if (setup->setup_packet.bRequest == SET_CONT_CARRIER && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Continious carrier %s", setup->setup_packet.wValue?"true":"false");
         bool enable = setup->setup_packet.wValue != 0;
