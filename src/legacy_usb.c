@@ -347,7 +347,7 @@ static void usb_thread(void *, void *, void *) {
                 // Send the packet
                 bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
 
-                if (acked) {
+                if (acked || !state.ack_enabled) {
                     led_pulse_green(K_MSEC(50));
                 } else {
                     led_pulse_red(K_MSEC(50));
@@ -361,14 +361,15 @@ static void usb_thread(void *, void *, void *) {
                 if (state.inline_mode) {
                     // Prepare the inline mode header
                     inline_mode_in_header *usb_header = (inline_mode_in_header *)state.usb_answer;
+                    memset(usb_header, 0, sizeof(inline_mode_in_header));
                     usb_header->length = ack.length + sizeof(inline_mode_in_header);
                     usb_header->ack_received = acked ? 1 : 0;
-                    usb_header->rssi_lt_64dbm = (rssi < 64) ? 1 : 0;
+                    if (state.ack_enabled) usb_header->rssi_lt_64dbm = (rssi < 64) ? 1 : 0;
                     usb_header->invalid_settings = (state.datarate == 0 || state.channel > 100) ? 1 : 0;
-                    usb_header->arc_counter = arc_counter & 0x0f;
+                    if (state.ack_enabled) usb_header->arc_counter = arc_counter & 0x0f;
 
                     // Shift the ack data
-                    if (ack.length > 0) {
+                    if (acked && ack.length > 0) {
                         memcpy(&state.usb_answer[sizeof(inline_mode_in_header)], ack.data, ack.length);
                     }
 

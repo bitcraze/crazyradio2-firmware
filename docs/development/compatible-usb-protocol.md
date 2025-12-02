@@ -88,7 +88,7 @@ Crazyradio vendor requests summary:
 |  0x40           | SET\_CONT\_CARRIER (0x20)     | Active     | Zero    | Zero     | None|
 |  0x40           | START\_SCAN\_CHANNELS (0x21)  | Start      | Stop    | Length   | Packet|
 |  0xC0           | GET\_SCAN\_CHANNELS (0x21)    | Zero       | Zero    | 63       | Result|
-|  0x40           | SET_INLINE_MODE               | Active     | Zero    | Zero     | None |
+|  0x40           | SET\_INLINE\_MODE (0x23)      | Active     | Zero    | Zero     | None |
 |  0x40           | SET_PACKET_LOSS_SIMULATION    | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
