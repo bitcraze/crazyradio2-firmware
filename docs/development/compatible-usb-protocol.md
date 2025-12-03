@@ -76,20 +76,20 @@ The status byte contains flags indicating the quality of the link:
 
 Crazyradio vendor requests summary:
 
-|  bmRequestType  | bRequest                      | wValue     | wIndex  | wLength  | data|
-|  ---------------| ------------------------------| -----------| --------| ---------| ---------|
-|  0x40           | SET\_RADIO\_CHANNEL (0x01)    | channel    | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ADDRESS (0x02)    | Zero       | Zero    | 5        | Address|
-|  0x40           | SET\_DATA\_RATE (0x03)        | Data rate  | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_POWER (0x04)      | Power      | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ARD (0x05)        | ARD        | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ARC (0x06)        | ARC        | Zero    | Zero     | None|
-|  0x40           | ACK\_ENABLE (0x10)            | Active     | Zero    | Zero     | None|
-|  0x40           | SET\_CONT\_CARRIER (0x20)     | Active     | Zero    | Zero     | None|
-|  0x40           | START\_SCAN\_CHANNELS (0x21)  | Start      | Stop    | Length   | Packet|
-|  0xC0           | GET\_SCAN\_CHANNELS (0x21)    | Zero       | Zero    | 63       | Result|
-|  0x40           | SET\_INLINE\_MODE (0x23)      | Active     | Zero    | Zero     | None |
-|  0x40           | SET_PACKET_LOSS_SIMULATION    | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
+|  bmRequestType  | bRequest                               | wValue     | wIndex  | wLength  | data|
+|  ---------------| ---------------------------------------| -----------| --------| ---------| ---------|
+|  0x40           | SET\_RADIO\_CHANNEL (0x01)             | channel    | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ADDRESS (0x02)             | Zero       | Zero    | 5        | Address|
+|  0x40           | SET\_DATA\_RATE (0x03)                 | Data rate  | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_POWER (0x04)               | Power      | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ARD (0x05)                 | ARD        | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ARC (0x06)                 | ARC        | Zero    | Zero     | None|
+|  0x40           | ACK\_ENABLE (0x10)                     | Active     | Zero    | Zero     | None|
+|  0x40           | SET\_CONT\_CARRIER (0x20)              | Active     | Zero    | Zero     | None|
+|  0x40           | START\_SCAN\_CHANNELS (0x21)           | Start      | Stop    | Length   | Packet|
+|  0xC0           | GET\_SCAN\_CHANNELS (0x21)             | Zero       | Zero    | 63       | Result|
+|  0x40           | SET\_INLINE\_MODE (0x23)               | Active     | Zero    | Zero     | None |
+|  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30)   | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
 ### Set radio channel
@@ -287,7 +287,7 @@ returned, it means that no channel have been received.
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
 |  ---------------| ---------------------------| --------| --------| ---------| ------ |
-|  0x40           | SET_INLINE_MODE (0x23)     | Active  | Zero    | Zero     | None   |
+|  0x40           | SET\_INLINE\_MODE (0x23)     | Active  | Zero    | Zero     | None   |
 
 This mode allows sending radio configuration together with packet payload on the OUT endpoint.
 This makes the communication with multiple PRX much more efficient!
@@ -334,9 +334,9 @@ used by future packets if inline mode is disabled.
 
 ### Packet loss simulation
 
-|  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
-|  ---------------| ---------------------------| --------| --------| ---------| ------ |
-|  0x40           | SET_PACKET_LOSS_SIMULATION | Zero    | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
+|  bmRequestType  | bRequest                             | wValue  | wIndex  | wLength  | data   |
+|  ---------------| ---------------------------          | --------| --------| ---------| ------ |
+|  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30) | Zero    | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 
 Crazyradio 2.0 has the capability to simulate packet loss. This is
 useful for working with and debuging communication protocols.
