@@ -56,7 +56,8 @@ acknowledge is disabled there is no IN transaction.
 To send a packet, the following sequence must be followed:
 
 -   Send the packet to EP1\_OUT. Its length should be between 1 to 32
-    Bytes
+    Bytes. If Inline mode is enabled, the packet payload is prepended by
+    radio settings (see [Inline setting mode](#inline-settings-mode))
 -   Read the ACK from EP1\_IN. The first byte is the transfer status and
     the following bytes are the content of the ACK payload, if any.
 
@@ -75,19 +76,20 @@ The status byte contains flags indicating the quality of the link:
 
 Crazyradio vendor requests summary:
 
-|  bmRequestType  | bRequest                      | wValue     | wIndex  | wLength  | data|
-|  ---------------| ------------------------------| -----------| --------| ---------| ---------|
-|  0x40           | SET\_RADIO\_CHANNEL (0x01)    | channel    | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ADDRESS (0x02)    | Zero       | Zero    | 5        | Address|
-|  0x40           | SET\_DATA\_RATE (0x03)        | Data rate  | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_POWER (0x04)      | Power      | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ARD (0x05)        | ARD        | Zero    | Zero     | None|
-|  0x40           | SET\_RADIO\_ARC (0x06)        | ARC        | Zero    | Zero     | None|
-|  0x40           | ACK\_ENABLE (0x10)            | Active     | Zero    | Zero     | None|
-|  0x40           | SET\_CONT\_CARRIER (0x20)     | Active     | Zero    | Zero     | None|
-|  0x40           | START\_SCAN\_CHANNELS (0x21)  | Start      | Stop    | Length   | Packet|
-|  0xC0           | GET\_SCAN\_CHANNELS (0x21)    | Zero       | Zero    | 63       | Result|
-|  0x40           | SET_PACKET_LOSS_SIMULATION    | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
+|  bmRequestType  | bRequest                               | wValue     | wIndex  | wLength  | data|
+|  ---------------| ---------------------------------------| -----------| --------| ---------| ---------|
+|  0x40           | SET\_RADIO\_CHANNEL (0x01)             | channel    | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ADDRESS (0x02)             | Zero       | Zero    | 5        | Address|
+|  0x40           | SET\_DATA\_RATE (0x03)                 | Data rate  | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_POWER (0x04)               | Power      | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ARD (0x05)                 | ARD        | Zero    | Zero     | None|
+|  0x40           | SET\_RADIO\_ARC (0x06)                 | ARC        | Zero    | Zero     | None|
+|  0x40           | ACK\_ENABLE (0x10)                     | Active     | Zero    | Zero     | None|
+|  0x40           | SET\_CONT\_CARRIER (0x20)              | Active     | Zero    | Zero     | None|
+|  0x40           | START\_SCAN\_CHANNELS (0x21)           | Start      | Stop    | Length   | Packet|
+|  0xC0           | GET\_SCAN\_CHANNELS (0x21)             | Zero       | Zero    | 63       | Result|
+|  0x40           | SET\_INLINE\_MODE (0x23)               | Active     | Zero    | Zero     | None |
+|  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30)   | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
 ### Set radio channel
@@ -104,6 +106,10 @@ The radio channel is set as soon as the USB setup transaction is
 completed, which takes about 1ms. The new frequency is going to be used
 for the following transferred packets. The default value for the radio
 channel is 2.
+
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
 
 ### Set radio address
 
@@ -124,6 +130,10 @@ nRF24LU1 documentation:
 
 The default address is 0xE7E7E7E7E7.
 
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
+
 ### Set data rate
 
 |  bmRequestType  | bRequest                | wValue     | wIndex  | wLength  | data   |
@@ -137,6 +147,10 @@ Possible values for the data rate:
 |  0       250Kbps
 |  1       1MBps
 |  2       2Mbps (Default)
+
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
 
 ### Set radio power
 
@@ -208,6 +222,10 @@ and there is no guarantee that it has been correctly received.
 |  0              | Auto ACK deactivated|
 |  Not 0          | Auto ACK enable (default)|
 
+---
+***Note:*** This command disables inline mode if it was previously enabled.
+---
+
 ### Continuous carrier mode
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data  |
@@ -265,12 +283,60 @@ Crazyradio firmware project. If a buffer of more than 63 bytes is
 returned, it means that no channel have been received.
 
 ---
-
-### Packet loss simulation
+### Inline settings mode
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
 |  ---------------| ---------------------------| --------| --------| ---------| ------ |
-|  0x40           | SET_PACKET_LOSS_SIMULATION | Zero    | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
+|  0x40           | SET\_INLINE\_MODE (0x23)     | Active  | Zero    | Zero     | None   |
+
+This mode allows sending radio configuration together with packet payload on the OUT endpoint.
+This makes the communication with multiple PRX much more efficient!
+
+|  Active values   | Meaning|
+|  --------------- | ----------------------------------------------------------- |
+|  0               | Inline mode deactivated (default)                           |
+|  1               | Inline mode enabled                                         |
+|  ...             | Reserved, STALL the setup phase                             |
+
+When enabled, the data format on the OUT endpoint becomes:
+
+**OUT endpoint format (host to device):**
+
+| Byte position | Length (bytes) | Description                               |
+| ------------- | -------------- | ----------------------------------------- |
+| 0             | 1              | Total length (including this header)      |
+| 1             | 1              | Datarate (bits 0-1: 0=250kbps, 1=1Mbps, 2=2Mbps)<br>Ack enabled (bit 4: 0=disabled, 1=enabled) |
+| 2             | 1              | Radio channel (0-100)                     |
+| 3-7           | 5              | Radio address (5 bytes)                   |
+| 8+            | 0-32           | Radio packet payload                      |
+
+**IN endpoint format (device to host):**
+
+After sending a packet in inline mode, the response format on the IN endpoint is:
+
+| Byte position | Length (bytes) | Description                               |
+| ------------- | -------------- | ----------------------------------------- |
+| 0             | 1              | Total length (including this header)      |
+| 1             | 1              | Ack received (bit 0: 0=no ack, 1=ack received)<br>RSSI < -64dBm (bit 1: 0=strong signal, 1=weak signal)<br>Invalid settings (bit 2: 0=valid, 1=invalid settings)<br>Retransmission count (bits 4-7: 0-15) |
+| 2+            | 0-32           | ACK payload data (if any)                 |
+
+**Settings validation:**
+
+Invalid settings that are not handled by Crazyradio 2 (causing invalid_settings flag to be set):
+- Datarate value of 0 (250kbps is not handled by Crazyradio 2.0)
+- Channel value greater than 100
+
+The settings are applied in the same way as if they were set using setup commands:
+they replace any other settings that have been made before and will stick to be
+used by future packets if inline mode is disabled.
+
+---
+
+### Packet loss simulation
+
+|  bmRequestType  | bRequest                             | wValue  | wIndex  | wLength  | data   |
+|  ---------------| ---------------------------          | --------| --------| ---------| ------ |
+|  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30) | Zero    | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 
 Crazyradio 2.0 has the capability to simulate packet loss. This is
 useful for working with and debuging communication protocols.
