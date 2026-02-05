@@ -399,10 +399,25 @@ static void usb_thread(void *, void *, void *) {
 
             } else {
                 LOG_DBG("Not sending, radio settings not handled!");
-                char no_ack_answer[1] = {0};
+                if (state.inline_mode) {
+                    // Prepare the inline mode header
+                    inline_mode_in_header invalid_settings_header = {
+                        .length = sizeof(inline_mode_in_header),
+                        .ack_received = 0,
+                        .rssi_lt_64dbm = 0,
+                        .invalid_settings = 1,
+                        .arc_counter = 0,
+                    };
+
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, (void*) &invalid_settings_header, invalid_settings_header.length, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+                }else {
+                    char no_ack_answer[1] = {0};
             
-                if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
-                    LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
                 }
 
                 led_pulse_red(K_MSEC(50));
