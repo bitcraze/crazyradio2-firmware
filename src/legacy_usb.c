@@ -419,7 +419,7 @@ static void usb_thread(void *, void *, void *) {
                         LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
                     }
                 }
-                
+
                 led_pulse_red(K_MSEC(50));
             }
         } else if (command.type == command_setup) {
