@@ -293,7 +293,7 @@ This mode allows sending radio configuration together with packet payload on the
 This makes the communication with multiple PRX much more efficient!
 
 Two inline mode exists, one that returns the same information as the regular mode and one
-that adds received RSSI value for each received packet in the IN endoint header.
+that adds received RSSI value for each received packet in the IN endpoint header.
 
 |  Mode   values   | Meaning|
 |  --------------- | ----------------------------------------------------------- |
@@ -326,7 +326,7 @@ After sending a packet in inline mode, the response format on the IN endpoint is
 
 **IN endpoint format for inline mode with RSSI (2) (device to host):**
 
-After sending a packet in inline mode, the response format on the IN endpoint is:
+After sending a packet in inline mode with RSSI, the response format on the IN endpoint is:
 
 | Byte position | Length (bytes) | Description                               |
 | ------------- | -------------- | ----------------------------------------- |
