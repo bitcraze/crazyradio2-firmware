@@ -62,12 +62,14 @@ static struct {
     uint8_t scan_result[63];
     int scan_result_length;
     bool inline_mode;
+    bool inline_rssi_mode;
     char usb_answer[64];
 } state = {
     .datarate = 2,
 	.channel = 42,
     .ack_enabled = true,
     .inline_mode = false,
+    .inline_rssi_mode = false,
 };
 
 // Inline mode out header
@@ -90,6 +92,17 @@ typedef struct {
     uint8_t reserved: 1;
     uint8_t arc_counter: 4;
 } __attribute__((packed)) inline_mode_in_header;
+
+// Inline with rssi mode in header
+typedef struct {
+    uint8_t length;
+    uint8_t ack_received: 1;
+    uint8_t rssi_lt_64dbm: 1;
+    uint8_t invalid_settings: 1;
+    uint8_t reserved: 1;
+    uint8_t arc_counter: 4;
+    uint8_t rssi_dbm;
+} __attribute__((packed)) inline_rssi_mode_in_header;
 
 #define CRAZYRADIO_NUM_EP 2
 #define CRAZYRADIO_OUT_EP_ADDR 0x01
@@ -183,6 +196,11 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_PACKET_LOSS_SIMULATION 0x30
 #define RESET_TO_BOOTLOADER 0xff
 
+// Inline mode values
+#define INLINE_MODE_OFF 0
+#define INLINE_MODE_ON 1
+#define INLINE_MODE_ON_WITH_RSSI 2
+
 // nRF24 power mapping
 // Those number are currently placeholder
 // Todo: use hardware test results to set approximate values there
@@ -214,7 +232,7 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             setup->bRequest == ACK_ENABLE ||
             setup->bRequest == SET_CONT_CARRIER ||
             setup->bRequest == SET_MODE ||
-            (setup->bRequest == SET_INLINE_MODE && setup->wValue < 2) ||
+            (setup->bRequest == SET_INLINE_MODE && setup->wValue <= INLINE_MODE_ON_WITH_RSSI) ||
             setup->bRequest == SET_PACKET_LOSS_SIMULATION) {
             
             LOG_DBG("Queuing command %d", setup->bRequest);
@@ -358,7 +376,7 @@ static void usb_thread(void *, void *, void *) {
                     ack.length = 32;
                 }
 
-                if (state.inline_mode) {
+                if (state.inline_mode && !state.inline_rssi_mode) {
                     // Prepare the inline mode header
                     inline_mode_in_header *usb_header = (inline_mode_in_header *)state.usb_answer;
                     memset(usb_header, 0, sizeof(inline_mode_in_header));
@@ -371,6 +389,25 @@ static void usb_thread(void *, void *, void *) {
                     // Shift the ack data
                     if (acked && ack.length > 0) {
                         memcpy(&state.usb_answer[sizeof(inline_mode_in_header)], ack.data, ack.length);
+                    }
+
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, usb_header->length, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+                } else if (state.inline_mode && state.inline_rssi_mode) {
+                    // Prepare the inline with rssi mode header
+                    inline_rssi_mode_in_header *usb_header = (inline_rssi_mode_in_header *)state.usb_answer;
+                    memset(usb_header, 0, sizeof(inline_rssi_mode_in_header));
+                    usb_header->length = ack.length + sizeof(inline_rssi_mode_in_header);
+                    usb_header->ack_received = acked ? 1 : 0;
+                    if (state.ack_enabled) usb_header->rssi_lt_64dbm = (rssi < 64) ? 1 : 0;
+                    usb_header->invalid_settings = (state.datarate == 0 || state.channel > 100) ? 1 : 0;
+                    if (state.ack_enabled) usb_header->arc_counter = arc_counter & 0x0f;
+                    usb_header->rssi_dbm = rssi;
+
+                    // Shift the ack data
+                    if (acked && ack.length > 0) {
+                        memcpy(&state.usb_answer[sizeof(inline_rssi_mode_in_header)], ack.data, ack.length);
                     }
 
                     if (usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, usb_header->length, NULL)) {
@@ -399,7 +436,7 @@ static void usb_thread(void *, void *, void *) {
 
             } else {
                 LOG_DBG("Not sending, radio settings not handled!");
-                if (state.inline_mode) {
+                if (state.inline_mode && !state.inline_rssi_mode) {
                     // Prepare the inline mode header
                     inline_mode_in_header invalid_settings_header = {
                         .length = sizeof(inline_mode_in_header),
@@ -412,7 +449,21 @@ static void usb_thread(void *, void *, void *) {
                     if (usb_write(CRAZYRADIO_IN_EP_ADDR, (void*) &invalid_settings_header, invalid_settings_header.length, NULL)) {
                         LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
                     }
-                }else {
+                } else if (state.inline_mode && state.inline_rssi_mode) {
+                    // Prepare the inline with rssi mode header
+                    inline_rssi_mode_in_header invalid_settings_header = {
+                        .length = sizeof(inline_rssi_mode_in_header),
+                        .ack_received = 0,
+                        .rssi_lt_64dbm = 0,
+                        .invalid_settings = 1,
+                        .arc_counter = 0,
+                        .rssi_dbm = 0,
+                    };
+
+                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, (void*) &invalid_settings_header, invalid_settings_header.length, NULL)) {
+                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
+                    }
+                } else {
                     char no_ack_answer[1] = {0};
             
                     if (usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL)) {
@@ -509,6 +560,7 @@ static void handle_vendor_command(struct setup_command* setup) {
         esb_set_ack_enabled(enabled);
         // Reset inline mode
         state.inline_mode = false;
+        state.inline_rssi_mode = false;
     } else if (setup->setup_packet.bRequest == SET_CONT_CARRIER && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Continious carrier %s", setup->setup_packet.wValue?"true":"false");
         bool enable = setup->setup_packet.wValue != 0;
@@ -518,6 +570,7 @@ static void handle_vendor_command(struct setup_command* setup) {
     } else if (setup->setup_packet.bRequest == SET_INLINE_MODE && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Inline Mode %d", setup->setup_packet.wValue);
         state.inline_mode = setup->setup_packet.wValue != 0;
+        state.inline_rssi_mode = setup->setup_packet.wValue == INLINE_MODE_ON_WITH_RSSI;
     } else if (setup->setup_packet.bRequest == SET_PACKET_LOSS_SIMULATION && setup->setup_packet.wLength == 2) {
         uint8_t packet_loss_percent = setup->data[0];
         uint8_t ack_loss_percent = setup->data[1];

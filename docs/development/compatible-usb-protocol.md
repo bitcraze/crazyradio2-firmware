@@ -88,7 +88,7 @@ Crazyradio vendor requests summary:
 |  0x40           | SET\_CONT\_CARRIER (0x20)              | Active     | Zero    | Zero     | None|
 |  0x40           | START\_SCAN\_CHANNELS (0x21)           | Start      | Stop    | Length   | Packet|
 |  0xC0           | GET\_SCAN\_CHANNELS (0x21)             | Zero       | Zero    | 63       | Result|
-|  0x40           | SET\_INLINE\_MODE (0x23)               | Active     | Zero    | Zero     | None |
+|  0x40           | SET\_INLINE\_MODE (0x23)               | Mode       | Zero    | Zero     | None |
 |  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30)   | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
@@ -287,15 +287,19 @@ returned, it means that no channel have been received.
 
 |  bmRequestType  | bRequest                   | wValue  | wIndex  | wLength  | data   |
 |  ---------------| ---------------------------| --------| --------| ---------| ------ |
-|  0x40           | SET\_INLINE\_MODE (0x23)     | Active  | Zero    | Zero     | None   |
+|  0x40           | SET\_INLINE\_MODE (0x23)   | Mode    | Zero    | Zero     | None   |
 
 This mode allows sending radio configuration together with packet payload on the OUT endpoint.
 This makes the communication with multiple PRX much more efficient!
 
-|  Active values   | Meaning|
+Two inline mode exists, one that returns the same information as the regular mode and one
+that adds received RSSI value for each received packet in the IN endoint header.
+
+|  Mode   values   | Meaning|
 |  --------------- | ----------------------------------------------------------- |
 |  0               | Inline mode deactivated (default)                           |
 |  1               | Inline mode enabled                                         |
+|  2               | Inline mode with RSSI enabled                               |
 |  ...             | Reserved, STALL the setup phase                             |
 
 When enabled, the data format on the OUT endpoint becomes:
@@ -310,7 +314,7 @@ When enabled, the data format on the OUT endpoint becomes:
 | 3-7           | 5              | Radio address (5 bytes)                   |
 | 8+            | 0-32           | Radio packet payload                      |
 
-**IN endpoint format (device to host):**
+**IN endpoint format for inline mode (1) (device to host):**
 
 After sending a packet in inline mode, the response format on the IN endpoint is:
 
@@ -319,6 +323,17 @@ After sending a packet in inline mode, the response format on the IN endpoint is
 | 0             | 1              | Total length (including this header)      |
 | 1             | 1              | Ack received (bit 0: 0=no ack, 1=ack received)<br>RSSI < -64dBm (bit 1: 0=strong signal, 1=weak signal)<br>Invalid settings (bit 2: 0=valid, 1=invalid settings)<br>Retransmission count (bits 4-7: 0-15) |
 | 2+            | 0-32           | ACK payload data (if any)                 |
+
+**IN endpoint format for inline mode with RSSI (2) (device to host):**
+
+After sending a packet in inline mode, the response format on the IN endpoint is:
+
+| Byte position | Length (bytes) | Description                               |
+| ------------- | -------------- | ----------------------------------------- |
+| 0             | 1              | Total length (including this header)      |
+| 1             | 1              | Ack received (bit 0: 0=no ack, 1=ack received)<br>RSSI < -64dBm (bit 1: 0=strong signal, 1=weak signal)<br>Invalid settings (bit 2: 0=valid, 1=invalid settings)<br>Retransmission count (bits 4-7: 0-15) |
+| 2             | 1              | Received packet RSSI in inverted dBm. Value of 60 means -60dBm. Value is only valid for an acked packet.  |
+| 3+            | 0-32           | ACK payload data (if any)                 |
 
 **Settings validation:**
 
