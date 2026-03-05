@@ -347,7 +347,19 @@ static void usb_thread(void *, void *, void *) {
                     handle_vendor_command(&command.setup);
                     k_mutex_unlock(&usb_radio_mutex);
                 }
-                // Ignore data commands in sniffer mode
+                else if (command.type == command_data) {
+                    if (command.data.length > 32) {
+                        command.data.length = 32;
+                    }
+                    packet.length = command.data.length;
+                    memcpy(packet.data, command.data.payload, command.data.length);
+
+                    k_mutex_lock(&usb_radio_mutex, K_FOREVER);
+                    esb_sniffer_send(&packet);
+                    k_mutex_unlock(&usb_radio_mutex);
+
+                    led_pulse_green(K_MSEC(50));
+                }
             }
 
             // Poll sniffer queue for received packets

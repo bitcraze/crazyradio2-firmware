@@ -513,6 +513,72 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     k_mutex_unlock(&radio_busy);
 }
 
+bool esb_sniffer_send(struct esbPacket_s *packet)
+{
+    if (!sniffer_active) {
+        return false;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+
+    // Stop continuous RX
+    sniffer_active = false;
+    nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+    k_sleep(K_USEC(200));
+    nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    fem_rxen_set(false);
+
+    // Transmit no-ack packet
+    packet->s1 = ((pid++ & 0x03) << 1) | 0;  // no-ack flag = 0
+
+    nrf_radio_shorts_set(NRF_RADIO,
+        RADIO_SHORTS_READY_START_Msk |
+        RADIO_SHORTS_END_DISABLE_Msk);
+
+    nrf_radio_packetptr_set(NRF_RADIO, packet);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
+    fem_txen_set(true);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
+
+    if (k_sem_take(&radioXferDone, K_MSEC(200)) != 0) {
+        LOG_WRN("Sniffer TX timeout, resetting radio");
+        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+        k_sleep(K_USEC(200));
+        k_sem_reset(&radioXferDone);
+    }
+
+    // Clean up TX
+    nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+    nrf_radio_shorts_set(NRF_RADIO, 0);
+    fem_txen_set(false);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+
+    // Restart continuous RX
+    sniffer_active = true;
+
+    nrf_radio_packetptr_set(NRF_RADIO, &sniffer_rx_buffer);
+
+    nrf_radio_shorts_set(NRF_RADIO,
+        RADIO_SHORTS_READY_START_Msk |
+        RADIO_SHORTS_END_DISABLE_Msk |
+        RADIO_SHORTS_DISABLED_RXEN_Msk |
+        NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK |
+        NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
+
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
+    fem_rxen_set(true);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RXEN);
+
+    k_mutex_unlock(&radio_busy);
+    return true;
+}
+
 void esb_sniffer_stop(void)
 {
     if (!sniffer_active) {

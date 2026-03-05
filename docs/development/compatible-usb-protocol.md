@@ -414,8 +414,18 @@ with the following format:
 | 3-6           | 4              | Timestamp in microseconds (uint32\_t LE, wraps ~71 min)|
 | 7+            | 0-32           | ESB packet payload                                    |
 
+**OUT endpoint broadcast TX (host to device):**
+
+While in sniffer mode, sending data on the OUT endpoint transmits it as a
+no-ack (broadcast) ESB packet using the current channel, datarate, and pipe-0
+address. The payload is raw ESB data (1-32 bytes, no header). No response is
+sent on the IN endpoint.
+
+During TX (~1ms), the radio briefly leaves RX mode. Incoming packets during
+this window will be missed (not counted in the drop counter).
+
 The blue LED is on while sniffer mode is active. The green LED pulses
-briefly for each received packet.
+briefly for each received or transmitted packet.
 
 ---
 
