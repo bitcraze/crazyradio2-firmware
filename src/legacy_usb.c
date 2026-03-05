@@ -279,7 +279,7 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             *len = MIN(state.scan_result_length, setup->wLength);
         }
         else if (setup->bRequest == GET_SNIFFER_DROP_COUNT && usb_reqtype_is_to_host(setup)) {
-            uint32_t drop_count_le;
+            static uint32_t drop_count_le;
             drop_count_le = sys_cpu_to_le32(sniffer_drop_count);
             *data = (uint8_t *)&drop_count_le;
             *len = MIN(4, setup->wLength);

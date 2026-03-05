@@ -530,6 +530,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet)
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     fem_rxen_set(false);
 
+    // Clear any stale semaphore from ISR firing during RX shutdown
+    k_sem_reset(&radioXferDone);
+
     // Transmit no-ack packet
     packet->s1 = ((pid++ & 0x03) << 1) | 0;  // no-ack flag = 0
 
