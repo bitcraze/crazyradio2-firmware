@@ -130,7 +130,7 @@ struct esbSnifferPacket_s {
     uint8_t rssi;
     uint8_t pipe;
     uint32_t timestamp_us;
-    char data[32];
+    uint8_t data[32];
 };
 
 /**
