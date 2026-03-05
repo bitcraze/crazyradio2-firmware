@@ -7,5 +7,6 @@ modules/
 .west/
 crazyradio2.zip
 .venv
+.cache/
 
 src/crazyradio2_firmware.egg-info

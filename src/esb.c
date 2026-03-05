@@ -55,12 +55,43 @@ static int ack_loss_percent = 0;
 
 static bool continuous_carrier_enabled = false;
 
+static bool sniffer_active = false;
+static esb_sniffer_rx_cb_t sniffer_callback = NULL;
+static struct esbPacket_s sniffer_rx_buffer;
+
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
 static void radio_isr(void *arg)
 {
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+
+    if (sniffer_active) {
+        bool crc_ok = nrf_radio_crc_status_check(NRF_RADIO);
+
+        if (crc_ok && sniffer_callback) {
+            static struct esbSnifferPacket_s pkt;
+            pkt.length = sniffer_rx_buffer.length;
+            if (pkt.length > 32) {
+                pkt.length = 32;
+            }
+            pkt.rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
+            pkt.pipe = nrf_radio_rxmatch_get(NRF_RADIO);
+
+            // Software-capture timestamp from TIMER0
+            nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CAPTURE3);
+            pkt.timestamp_us = nrf_timer_cc_get(NRF_TIMER0, NRF_TIMER_CC_CHANNEL3);
+
+            memcpy(pkt.data, sniffer_rx_buffer.data, pkt.length);
+
+            sniffer_callback(&pkt);
+        }
+
+        // Reset packet pointer for next reception
+        nrf_radio_packetptr_set(NRF_RADIO, &sniffer_rx_buffer);
+        // Radio auto-restarts via DISABLED->RXEN short
+        return;
+    }
 
     if (sending) {
         // Packet sent!, the radio is currently switching to RX mode
@@ -281,7 +312,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         return false;
     }
 
-    if (continuous_carrier_enabled) {
+    if (continuous_carrier_enabled || sniffer_active) {
         return false;
     }
 
@@ -401,6 +432,10 @@ bool esb_set_continuous_carrier(bool enable) {
         return false;
     }
 
+    if (sniffer_active) {
+        return false;
+    }
+
     if (enable == continuous_carrier_enabled) {
         return false;
     }
@@ -423,4 +458,96 @@ bool esb_set_continuous_carrier(bool enable) {
 
     k_mutex_unlock(&radio_busy);
     return true;
+}
+
+void esb_set_address_pipe1(uint8_t address[5])
+{
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    uint32_t base1 = address[1]<<24 | address[2]<<16 | address[3]<<8 | address[4];
+    nrf_radio_base1_set(NRF_RADIO, bytewise_bitswap(base1));
+    uint32_t prefix0 = nrf_radio_prefix0_get(NRF_RADIO);
+    prefix0 = (prefix0 & 0xffff00ff) | ((swap_bits(address[0]) & 0xff) << 8);
+    nrf_radio_prefix0_set(NRF_RADIO, prefix0);
+    k_mutex_unlock(&radio_busy);
+}
+
+void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
+{
+    if (!isInit || sniffer_active) {
+        return;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+
+    sniffer_active = true;
+    sniffer_callback = cb;
+
+    // Enable RX on pipes 0 and 1
+    nrf_radio_rxaddresses_set(NRF_RADIO, 0x03u);
+
+    // Set packet pointer
+    nrf_radio_packetptr_set(NRF_RADIO, &sniffer_rx_buffer);
+
+    // Configure continuous RX shorts:
+    // READY->START, END->DISABLE, DISABLED->RXEN, ADDRESS->RSSISTART, DISABLED->RSSISTOP
+    nrf_radio_shorts_set(NRF_RADIO,
+        RADIO_SHORTS_READY_START_Msk |
+        RADIO_SHORTS_END_DISABLE_Msk |
+        RADIO_SHORTS_DISABLED_RXEN_Msk |
+        NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK |
+        NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
+
+    // Enable DISABLED interrupt
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+
+    // Enable FEM for RX
+    fem_rxen_set(true);
+
+    // Clear TIMER0 for clean relative timestamps
+    nrf_timer_task_trigger(NRF_TIMER0, NRF_TIMER_TASK_CLEAR);
+
+    // Start RX
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_RXEN);
+
+    k_mutex_unlock(&radio_busy);
+}
+
+void esb_sniffer_stop(void)
+{
+    if (!sniffer_active) {
+        return;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+
+    // Remove DISABLED->RXEN short to break the continuous RX loop
+    nrf_radio_shorts_disable(NRF_RADIO, RADIO_SHORTS_DISABLED_RXEN_Msk);
+
+    // Trigger DISABLE and wait for radio to stop
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+    k_sleep(K_USEC(200));
+
+    // Clean up shorts and interrupts
+    nrf_radio_shorts_set(NRF_RADIO,
+        NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK |
+        NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
+    nrf_radio_int_disable(NRF_RADIO, NRF_RADIO_INT_DISABLED_MASK);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+
+    // Disable FEM
+    fem_rxen_set(false);
+
+    // Restore RX address to pipe 0 only
+    nrf_radio_rxaddresses_set(NRF_RADIO, 0x01u);
+
+    sniffer_active = false;
+    sniffer_callback = NULL;
+
+    k_mutex_unlock(&radio_busy);
+}
+
+bool esb_sniffer_is_active(void)
+{
+    return sniffer_active;
 }

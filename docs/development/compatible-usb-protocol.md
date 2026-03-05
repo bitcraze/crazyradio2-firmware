@@ -89,6 +89,9 @@ Crazyradio vendor requests summary:
 |  0x40           | START\_SCAN\_CHANNELS (0x21)           | Start      | Stop    | Length   | Packet|
 |  0xC0           | GET\_SCAN\_CHANNELS (0x21)             | Zero       | Zero    | 63       | Result|
 |  0x40           | SET\_INLINE\_MODE (0x23)               | Mode       | Zero    | Zero     | None |
+|  0x40           | SET\_RADIO\_MODE (0x24)                | Mode (0-1) | Zero    | Zero     | None|
+|  0x40           | SET\_SNIFFER\_ADDRESS (0x25)           | Pipe (0-1) | Zero    | 5        | Address|
+|  0xC0           | GET\_SNIFFER\_DROP\_COUNT (0x26)       | Zero       | Zero    | 4        | uint32\_t LE|
 |  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30)   | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
@@ -344,6 +347,75 @@ Invalid settings that are not handled by Crazyradio 2 (causing invalid_settings 
 The settings are applied in the same way as if they were set using setup commands:
 they replace any other settings that have been made before and will stick to be
 used by future packets if inline mode is disabled.
+
+---
+
+### Sniffer mode
+
+|  bmRequestType  | bRequest                               | wValue     | wIndex  | wLength  | data|
+|  ---------------| ---------------------------------------| -----------| --------| ---------| ---------|
+|  0x40           | SET\_RADIO\_MODE (0x24)                | Mode       | Zero    | Zero     | None|
+|  0x40           | SET\_SNIFFER\_ADDRESS (0x25)           | Pipe (0-1) | Zero    | 5        | Address|
+|  0xC0           | GET\_SNIFFER\_DROP\_COUNT (0x26)       | Zero       | Zero    | 4        | uint32\_t LE|
+
+Sniffer mode puts the radio in continuous RX mode, passively listening for
+ESB packets on the configured channel, datarate, and address(es). This is
+useful for debugging and monitoring Crazyflie communications.
+
+**Entering sniffer mode:**
+
+1. Configure channel, datarate, and address using the standard commands
+   (SET\_RADIO\_CHANNEL, SET\_DATA\_RATE, SET\_RADIO\_ADDRESS)
+2. Optionally set a second address on pipe 1 using SET\_SNIFFER\_ADDRESS
+   with wValue=1
+3. Send SET\_RADIO\_MODE with wValue=1 to enter sniffer mode
+
+**Exiting sniffer mode:**
+
+Send SET\_RADIO\_MODE with wValue=0. Normal TX/ACK operation is restored.
+
+**Detecting sniffer support:**
+
+Sending SET\_RADIO\_MODE with any unsupported wValue (>= 2) will cause a
+USB STALL, which can be used to detect whether the firmware supports
+sniffer mode without checking the firmware version.
+
+|  Mode values    | Meaning|
+|  ---------------| -----------------------------------|
+|  0              | Normal mode (default)|
+|  1              | Sniffer mode (continuous RX)|
+
+**SET\_SNIFFER\_ADDRESS:**
+
+Sets the radio address for sniffer pipe 0 or pipe 1. Pipe 0 can also be
+set using the existing SET\_RADIO\_ADDRESS command before entering sniffer
+mode.
+
+|  wValue  | Meaning|
+|  --------| -----------------------------------|
+|  0       | Set pipe 0 address (same as SET\_RADIO\_ADDRESS)|
+|  1       | Set pipe 1 address|
+
+**GET\_SNIFFER\_DROP\_COUNT:**
+
+Returns the number of packets dropped due to queue overflow since the last
+time sniffer mode was entered (as a 4-byte little-endian uint32\_t).
+
+**IN endpoint sniffer packet format (device to host):**
+
+While in sniffer mode, received packets are streamed on the IN endpoint
+with the following format:
+
+| Byte position | Length (bytes) | Description                                           |
+| ------------- | -------------- | ----------------------------------------------------- |
+| 0             | 1              | Total length (7 + payload length)                     |
+| 1             | 1              | RSSI in inverted dBm (e.g. 60 = -60 dBm)             |
+| 2             | 1              | Pipe index (0 or 1)                                   |
+| 3-6           | 4              | Timestamp in microseconds (uint32\_t LE, wraps ~71 min)|
+| 7+            | 0-32           | ESB packet payload                                    |
+
+The blue LED is on while sniffer mode is active. The green LED pulses
+briefly for each received packet.
 
 ---
 
