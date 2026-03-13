@@ -152,13 +152,14 @@ void esb_sniffer_stop(void);
 /**
  * @brief Send a no-ack broadcast packet while in sniffer mode
  *
- * Temporarily stops continuous RX, transmits the packet, then resumes RX.
- * Uses the current channel, datarate, and pipe-0 address.
+ * Temporarily stops continuous RX, sets the TX address, transmits the packet,
+ * then restores the original pipe 0 address and resumes RX.
  *
  * @param packet ESB packet to send (length and data fields must be set)
+ * @param address 5-byte TX address to send the packet to
  * @return true if the packet was sent successfully, false otherwise
  */
-bool esb_sniffer_send(struct esbPacket_s *packet);
+bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5]);
 
 /**
  * @brief Check if sniffer mode is currently active

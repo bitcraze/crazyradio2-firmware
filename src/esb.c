@@ -58,6 +58,7 @@ static bool continuous_carrier_enabled = false;
 static bool sniffer_active = false;
 static esb_sniffer_rx_cb_t sniffer_callback = NULL;
 static struct esbPacket_s sniffer_rx_buffer;
+static uint8_t current_pipe0_address[5] = {0xe7, 0xe7, 0xe7, 0xe7, 0xe7};
 
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
@@ -290,6 +291,7 @@ static uint32_t bytewise_bitswap(uint32_t inp)
 void esb_set_address(uint8_t address[5])
 {
     k_mutex_lock(&radio_busy, K_FOREVER);
+    memcpy(current_pipe0_address, address, 5);
     uint32_t base0 = address[1]<<24 | address[2]<<16 | address[3]<<8 | address[4];
     nrf_radio_base0_set(NRF_RADIO, bytewise_bitswap(base0));
     uint32_t prefix0 = nrf_radio_prefix0_get(NRF_RADIO);
@@ -513,13 +515,26 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     k_mutex_unlock(&radio_busy);
 }
 
-bool esb_sniffer_send(struct esbPacket_s *packet)
+static void set_pipe0_address_nolock(uint8_t address[5])
+{
+    uint32_t base0 = address[1]<<24 | address[2]<<16 | address[3]<<8 | address[4];
+    nrf_radio_base0_set(NRF_RADIO, bytewise_bitswap(base0));
+    uint32_t prefix0 = nrf_radio_prefix0_get(NRF_RADIO);
+    prefix0 = (prefix0 & 0xffffff00) | (swap_bits(address[0]) & 0x0ff);
+    nrf_radio_prefix0_set(NRF_RADIO, prefix0);
+}
+
+bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5])
 {
     if (!sniffer_active) {
         return false;
     }
 
     k_mutex_lock(&radio_busy, K_FOREVER);
+
+    // Save current pipe 0 address for restoration after TX
+    uint8_t saved_address[5];
+    memcpy(saved_address, current_pipe0_address, 5);
 
     // Stop continuous RX
     sniffer_active = false;
@@ -532,6 +547,10 @@ bool esb_sniffer_send(struct esbPacket_s *packet)
 
     // Clear any stale semaphore from ISR firing during RX shutdown
     k_sem_reset(&radioXferDone);
+
+    // Set TX address to the provided address
+    set_pipe0_address_nolock(address);
+    nrf_radio_txaddress_set(NRF_RADIO, 0);
 
     // Transmit no-ack packet
     packet->s1 = ((pid++ & 0x03) << 1) | 0;  // no-ack flag = 0
@@ -559,6 +578,9 @@ bool esb_sniffer_send(struct esbPacket_s *packet)
     nrf_radio_shorts_set(NRF_RADIO, 0);
     fem_txen_set(false);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+
+    // Restore pipe 0 address for sniffer RX
+    set_pipe0_address_nolock(saved_address);
 
     // Restart continuous RX
     sniffer_active = true;

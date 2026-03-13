@@ -348,14 +348,21 @@ static void usb_thread(void *, void *, void *) {
                     k_mutex_unlock(&usb_radio_mutex);
                 }
                 else if (command.type == command_data) {
-                    if (command.data.length > 32) {
-                        command.data.length = 32;
+                    if (command.data.length < 6) {
+                        // Need at least 5 address bytes + 1 byte payload
+                        continue;
                     }
-                    packet.length = command.data.length;
-                    memcpy(packet.data, command.data.payload, command.data.length);
+                    uint8_t address[5];
+                    memcpy(address, command.data.payload, 5);
+                    uint8_t payload_length = command.data.length - 5;
+                    if (payload_length > 32) {
+                        payload_length = 32;
+                    }
+                    packet.length = payload_length;
+                    memcpy(packet.data, &command.data.payload[5], payload_length);
 
                     k_mutex_lock(&usb_radio_mutex, K_FOREVER);
-                    esb_sniffer_send(&packet);
+                    esb_sniffer_send(&packet, address);
                     k_mutex_unlock(&usb_radio_mutex);
 
                     led_pulse_green(K_MSEC(50));

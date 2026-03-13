@@ -417,9 +417,16 @@ with the following format:
 **OUT endpoint broadcast TX (host to device):**
 
 While in sniffer mode, sending data on the OUT endpoint transmits it as a
-no-ack (broadcast) ESB packet using the current channel, datarate, and pipe-0
-address. The payload is raw ESB data (1-32 bytes, no header). No response is
-sent on the IN endpoint.
+no-ack (broadcast) ESB packet using the current channel and datarate. The
+first 5 bytes specify the destination address, followed by the raw ESB
+payload (1-32 bytes):
+
+| Offset | Size (bytes) | Description                                    |
+| ------ | ------------ | ---------------------------------------------- |
+| 0-4    | 5            | Destination address (5 bytes)                  |
+| 5+     | 1-32         | ESB packet payload                             |
+
+No response is sent on the IN endpoint.
 
 During TX (~1ms), the radio briefly leaves RX mode. Incoming packets during
 this window will be missed (not counted in the drop counter).
