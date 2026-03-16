@@ -12,7 +12,8 @@ The radio communication is done using the Nordic \"Enhanced
 ShockBurst™\" packet protocol in PTX mode with acknowledge. Variable
 sized packet, from 1 to 32 bytes, can be send and acknowledged by the
 copter. The acknowledgement packet can contain a payload from 0 to 32
-Bytes.
+Bytes. In sniffer mode, the radio supports packets up to 63 bytes
+(the full 6-bit length field range).
 
 This page documents the protocol used in version 5.0 of the Crazyradio 2.0
 firmware.
@@ -56,8 +57,9 @@ acknowledge is disabled there is no IN transaction.
 To send a packet, the following sequence must be followed:
 
 -   Send the packet to EP1\_OUT. Its length should be between 1 to 32
-    Bytes. If Inline mode is enabled, the packet payload is prepended by
-    radio settings (see [Inline setting mode](#inline-settings-mode))
+    Bytes in normal mode (up to 63 bytes in sniffer mode). If Inline mode
+    is enabled, the packet payload is prepended by radio settings (see
+    [Inline setting mode](#inline-settings-mode))
 -   Read the ACK from EP1\_IN. The first byte is the transfer status and
     the following bytes are the content of the ACK payload, if any.
 
@@ -412,19 +414,32 @@ with the following format:
 | 1             | 1              | RSSI in inverted dBm (e.g. 60 = -60 dBm)             |
 | 2             | 1              | Pipe index (0 or 1)                                   |
 | 3-6           | 4              | Timestamp in microseconds (uint32\_t LE, wraps ~71 min)|
-| 7+            | 0-32           | ESB packet payload                                    |
+| 7+            | 0-63           | ESB packet payload                                    |
+
+The total USB transfer size is 7 + payload length (range: 7 to 70 bytes).
+When the total length exceeds 64 bytes (the USB bulk max packet size), the
+device automatically splits the transfer across multiple USB packets. When
+the total length is exactly 64 bytes (57-byte payload), the device sends a
+zero-length packet (ZLP) to terminate the transfer.
 
 **OUT endpoint broadcast TX (host to device):**
 
 While in sniffer mode, sending data on the OUT endpoint transmits it as a
 no-ack (broadcast) ESB packet using the current channel and datarate. The
 first 5 bytes specify the destination address, followed by the raw ESB
-payload (1-32 bytes):
+payload (1-63 bytes):
 
 | Offset | Size (bytes) | Description                                    |
 | ------ | ------------ | ---------------------------------------------- |
 | 0-4    | 5            | Destination address (5 bytes)                  |
-| 5+     | 1-32         | ESB packet payload                             |
+| 5+     | 1-63         | ESB packet payload                             |
+
+The total USB transfer size is 5 + payload length (range: 6 to 68 bytes).
+When the total exceeds 64 bytes (the USB bulk max packet size), the host
+must split the transfer across multiple USB packets. When the total is
+exactly 64 bytes (59-byte payload), the host must send a ZLP to terminate
+the transfer. Most USB libraries (e.g. libusb) handle this automatically
+for bulk endpoints.
 
 No response is sent on the IN endpoint.
 

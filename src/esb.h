@@ -82,7 +82,7 @@ void esb_set_address(uint8_t address[5]);
 struct esbPacket_s {
     uint8_t length;
     uint8_t s1;
-    char data[32];
+    char data[63];
 } __attribute__((packed));
 
 /**
@@ -130,7 +130,7 @@ struct esbSnifferPacket_s {
     uint8_t rssi;
     uint8_t pipe;
     uint32_t timestamp_us;
-    uint8_t data[32];
+    uint8_t data[63];
 };
 
 /**

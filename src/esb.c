@@ -73,8 +73,8 @@ static void radio_isr(void *arg)
         if (crc_ok && sniffer_callback) {
             static struct esbSnifferPacket_s pkt;
             pkt.length = sniffer_rx_buffer.length;
-            if (pkt.length > 32) {
-                pkt.length = 32;
+            if (pkt.length > 63) {
+                pkt.length = 63;
             }
             pkt.rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
             pkt.pipe = nrf_radio_rxmatch_get(NRF_RADIO);
@@ -484,6 +484,18 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     sniffer_active = true;
     sniffer_callback = cb;
 
+    // Reconfigure radio for 63-byte max packet length
+    nrf_radio_packet_conf_t radioConfig = {0,};
+    radioConfig.lflen = 6;
+    radioConfig.s0len = 0;
+    radioConfig.s1len = 3;
+    radioConfig.maxlen = 63;
+    radioConfig.statlen = 0;
+    radioConfig.balen = 4;
+    radioConfig.big_endian = true;
+    radioConfig.whiteen = false;
+    nrf_radio_packet_configure(NRF_RADIO, &radioConfig);
+
     // Enable RX on pipes 0 and 1
     nrf_radio_rxaddresses_set(NRF_RADIO, 0x03u);
 
@@ -634,6 +646,18 @@ void esb_sniffer_stop(void)
 
     sniffer_active = false;
     sniffer_callback = NULL;
+
+    // Restore radio to 32-byte max packet length for normal operation
+    nrf_radio_packet_conf_t radioConfig = {0,};
+    radioConfig.lflen = 6;
+    radioConfig.s0len = 0;
+    radioConfig.s1len = 3;
+    radioConfig.maxlen = 32;
+    radioConfig.statlen = 0;
+    radioConfig.balen = 4;
+    radioConfig.big_endian = true;
+    radioConfig.whiteen = false;
+    nrf_radio_packet_configure(NRF_RADIO, &radioConfig);
 
     k_mutex_unlock(&radio_busy);
 }

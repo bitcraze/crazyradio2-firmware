@@ -29,7 +29,7 @@ char* command_type_name[] = {
 };
 
 struct data_command {
-    char payload[64];
+    char payload[128];
     uint32_t length;
 };
 
@@ -48,7 +48,7 @@ struct usb_command {
 };
 
 K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
-K_MSGQ_DEFINE(sniffer_queue, sizeof(struct esbSnifferPacket_s), 16, 4);
+K_MSGQ_DEFINE(sniffer_queue, sizeof(struct esbSnifferPacket_s), 8, 4);
 
 K_MUTEX_DEFINE(usb_radio_mutex);
 
@@ -67,7 +67,7 @@ static struct {
     bool inline_mode;
     bool inline_rssi_mode;
     bool sniffer_mode;
-    char usb_answer[64];
+    char usb_answer[128];
 } state = {
     .datarate = 2,
 	.channel = 42,
@@ -161,20 +161,36 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 {
     uint32_t bytes_to_read;
     static struct usb_command command;
+    static bool accumulating = false;
+
+    usb_read(ep, NULL, 0, &bytes_to_read);
+
+    if (accumulating) {
+        uint32_t offset = command.data.length;
+        if (offset + bytes_to_read > sizeof(command.data.payload)) {
+            bytes_to_read = sizeof(command.data.payload) - offset;
+        }
+        usb_read(ep, &command.data.payload[offset], bytes_to_read, NULL);
+        command.data.length += bytes_to_read;
+        if (bytes_to_read < CRAZYRADIO_BULK_EP_MPS) {
+            accumulating = false;
+            k_msgq_put(&command_queue, &command, K_FOREVER);
+        }
+        return;
+    }
 
     command.type = command_data;
-	
-    usb_read(ep, NULL, 0, &bytes_to_read);
-	// LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
-    if (bytes_to_read > 64) {
-        bytes_to_read = 64;
+    if (bytes_to_read > sizeof(command.data.payload)) {
+        bytes_to_read = sizeof(command.data.payload);
     }
-	usb_read(ep, command.data.payload, bytes_to_read, NULL);
+    usb_read(ep, command.data.payload, bytes_to_read, NULL);
+    command.data.length = bytes_to_read;
 
-	command.data.length = bytes_to_read;
-
+    if (bytes_to_read == CRAZYRADIO_BULK_EP_MPS) {
+        accumulating = true;
+        return;
+    }
     k_msgq_put(&command_queue, &command, K_FOREVER);
-
 }
 
 void crazyradio_in_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
@@ -322,7 +338,7 @@ USBD_DEFINE_CFG_DATA(crazyradio_config) = {
 	.endpoint = ep_cfg,
 };
 
-#define USB_THREAD_STACK_SIZE 768
+#define USB_THREAD_STACK_SIZE 1024
 #define USB_THREAD_PRIORITY 5
 
 static void usb_thread(void *, void *, void *);
@@ -355,8 +371,8 @@ static void usb_thread(void *, void *, void *) {
                     uint8_t address[5];
                     memcpy(address, command.data.payload, 5);
                     uint8_t payload_length = command.data.length - 5;
-                    if (payload_length > 32) {
-                        payload_length = 32;
+                    if (payload_length > 63) {
+                        payload_length = 63;
                     }
                     packet.length = payload_length;
                     memcpy(packet.data, &command.data.payload[5], payload_length);
@@ -383,6 +399,9 @@ static void usb_thread(void *, void *, void *) {
                 }
 
                 usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, total_length, NULL);
+                if (total_length == CRAZYRADIO_BULK_EP_MPS) {
+                    usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, 0, NULL);
+                }
                 led_pulse_green(K_MSEC(50));
             }
             continue;
