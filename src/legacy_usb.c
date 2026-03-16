@@ -15,6 +15,7 @@
 
 #include <hal/nrf_radio.h>
 
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
@@ -52,7 +53,7 @@ K_MSGQ_DEFINE(sniffer_queue, sizeof(struct esbSnifferPacket_s), 8, 4);
 
 K_MUTEX_DEFINE(usb_radio_mutex);
 
-static volatile uint32_t sniffer_drop_count;
+static atomic_t sniffer_drop_count;
 
 static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
 static void handle_vendor_command(struct setup_command* setup);
@@ -153,7 +154,7 @@ USBD_CLASS_DESCR_DEFINE(primary, 0) struct {
 static void sniffer_rx_callback(const struct esbSnifferPacket_s *pkt)
 {
     if (k_msgq_put(&sniffer_queue, pkt, K_NO_WAIT) != 0) {
-        sniffer_drop_count++;
+        atomic_inc(&sniffer_drop_count);
     }
 }
 
@@ -167,11 +168,16 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 
     if (accumulating) {
         uint32_t offset = command.data.length;
-        if (offset + bytes_to_read > sizeof(command.data.payload)) {
-            bytes_to_read = sizeof(command.data.payload) - offset;
+        uint32_t space = sizeof(command.data.payload) - offset;
+        if (bytes_to_read <= space) {
+            usb_read(ep, &command.data.payload[offset], bytes_to_read, NULL);
+            command.data.length += bytes_to_read;
+        } else {
+            usb_read(ep, &command.data.payload[offset], space, NULL);
+            command.data.length += space;
+            uint8_t scratch[CRAZYRADIO_BULK_EP_MPS];
+            usb_read(ep, scratch, bytes_to_read - space, NULL);
         }
-        usb_read(ep, &command.data.payload[offset], bytes_to_read, NULL);
-        command.data.length += bytes_to_read;
         if (bytes_to_read < CRAZYRADIO_BULK_EP_MPS) {
             accumulating = false;
             k_msgq_put(&command_queue, &command, K_FOREVER);
@@ -181,10 +187,14 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 
     command.type = command_data;
     if (bytes_to_read > sizeof(command.data.payload)) {
-        bytes_to_read = sizeof(command.data.payload);
+        usb_read(ep, command.data.payload, sizeof(command.data.payload), NULL);
+        uint8_t scratch[CRAZYRADIO_BULK_EP_MPS];
+        usb_read(ep, scratch, bytes_to_read - sizeof(command.data.payload), NULL);
+        command.data.length = sizeof(command.data.payload);
+    } else {
+        usb_read(ep, command.data.payload, bytes_to_read, NULL);
+        command.data.length = bytes_to_read;
     }
-    usb_read(ep, command.data.payload, bytes_to_read, NULL);
-    command.data.length = bytes_to_read;
 
     if (bytes_to_read == CRAZYRADIO_BULK_EP_MPS) {
         accumulating = true;
@@ -296,7 +306,7 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
         }
         else if (setup->bRequest == GET_SNIFFER_DROP_COUNT && usb_reqtype_is_to_host(setup)) {
             static uint32_t drop_count_le;
-            drop_count_le = sys_cpu_to_le32(sniffer_drop_count);
+            drop_count_le = sys_cpu_to_le32(atomic_get(&sniffer_drop_count));
             *data = (uint8_t *)&drop_count_le;
             *len = MIN(4, setup->wLength);
         }
@@ -666,7 +676,7 @@ static void handle_vendor_command(struct setup_command* setup) {
             state.inline_mode = false;
             state.inline_rssi_mode = false;
             k_msgq_purge(&sniffer_queue);
-            sniffer_drop_count = 0;
+            atomic_set(&sniffer_drop_count, 0);
             esb_sniffer_start(sniffer_rx_callback);
             led_set_blue(true);
         } else if (setup->setup_packet.wValue == 0) {
