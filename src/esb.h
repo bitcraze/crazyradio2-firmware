@@ -25,6 +25,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define ESB_MAX_PAYLOAD_LENGTH 63
+
 void esb_init();
 void esb_deinit();
 
@@ -82,7 +84,7 @@ void esb_set_address(uint8_t address[5]);
 struct esbPacket_s {
     uint8_t length;
     uint8_t s1;
-    char data[32];
+    char data[ESB_MAX_PAYLOAD_LENGTH];
 } __attribute__((packed));
 
 /**
@@ -121,3 +123,54 @@ bool esb_set_continuous_carrier(bool enable);
  * @param ack_loss_percent Percentage of acks to drop (0-100)
  */
 void esb_set_packet_loss_simulation(uint8_t packet_loss_percent, uint8_t ack_loss_percent);
+
+/**
+ * @brief Sniffer received packet structure
+ */
+struct esbSnifferPacket_s {
+    uint8_t length;
+    uint8_t rssi;
+    uint8_t pipe;
+    uint32_t timestamp_us;
+    uint8_t data[ESB_MAX_PAYLOAD_LENGTH];
+};
+
+/**
+ * @brief Callback type for sniffer received packets (called from ISR context)
+ */
+typedef void (*esb_sniffer_rx_cb_t)(const struct esbSnifferPacket_s *packet);
+
+/**
+ * @brief Start sniffer mode (continuous RX on pipes 0 and 1)
+ * @param cb Callback invoked from ISR for each received packet
+ */
+void esb_sniffer_start(esb_sniffer_rx_cb_t cb);
+
+/**
+ * @brief Stop sniffer mode and return radio to idle
+ */
+void esb_sniffer_stop(void);
+
+/**
+ * @brief Send a no-ack broadcast packet while in sniffer mode
+ *
+ * Temporarily stops continuous RX, sets the TX address, transmits the packet,
+ * then restores the original pipe 0 address and resumes RX.
+ *
+ * @param packet ESB packet to send (length and data fields must be set)
+ * @param address 5-byte TX address to send the packet to
+ * @return true if the packet was sent successfully, false otherwise
+ */
+bool esb_sniffer_send(struct esbPacket_s *packet, uint8_t address[5]);
+
+/**
+ * @brief Check if sniffer mode is currently active
+ * @return true if sniffer is active
+ */
+bool esb_sniffer_is_active(void);
+
+/**
+ * @brief Set the address for pipe 1 (used by sniffer mode)
+ * @param address 5-byte address
+ */
+void esb_set_address_pipe1(uint8_t address[5]);

@@ -13,8 +13,11 @@
 #include "led.h"
 #include "system.h"
 
+#define USB_ANSWER_MAX_LENGTH 128
+
 #include <hal/nrf_radio.h>
 
+#include <zephyr/sys/atomic.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(usb);
 
@@ -29,7 +32,7 @@ char* command_type_name[] = {
 };
 
 struct data_command {
-    char payload[64];
+    char payload[USB_ANSWER_MAX_LENGTH];
     uint32_t length;
 };
 
@@ -48,8 +51,11 @@ struct usb_command {
 };
 
 K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
+K_MSGQ_DEFINE(sniffer_queue, sizeof(struct esbSnifferPacket_s), 8, 4);
 
 K_MUTEX_DEFINE(usb_radio_mutex);
+
+static atomic_t sniffer_drop_count;
 
 static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
 static void handle_vendor_command(struct setup_command* setup);
@@ -59,17 +65,19 @@ static struct {
     uint8_t datarate;
 	uint8_t channel;
     bool ack_enabled;
-    uint8_t scan_result[63];
+    uint8_t scan_result[ESB_MAX_PAYLOAD_LENGTH];
     int scan_result_length;
     bool inline_mode;
     bool inline_rssi_mode;
-    char usb_answer[64];
+    bool sniffer_mode;
+    char usb_answer[USB_ANSWER_MAX_LENGTH];
 } state = {
     .datarate = 2,
 	.channel = 42,
     .ack_enabled = true,
     .inline_mode = false,
     .inline_rssi_mode = false,
+    .sniffer_mode = false,
 };
 
 // Inline mode out header
@@ -145,24 +153,56 @@ USBD_CLASS_DESCR_DEFINE(primary, 0) struct {
 				       CRAZYRADIO_BULK_EP_MPS, 0),
 };
 
+static void sniffer_rx_callback(const struct esbSnifferPacket_s *pkt)
+{
+    if (k_msgq_put(&sniffer_queue, pkt, K_NO_WAIT) != 0) {
+        atomic_inc(&sniffer_drop_count);
+    }
+}
+
 void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 {
     uint32_t bytes_to_read;
     static struct usb_command command;
+    static bool accumulating = false;
+
+    usb_read(ep, NULL, 0, &bytes_to_read);
+
+    if (accumulating) {
+        uint32_t offset = command.data.length;
+        uint32_t space = sizeof(command.data.payload) - offset;
+        if (bytes_to_read <= space) {
+            usb_read(ep, &command.data.payload[offset], bytes_to_read, NULL);
+            command.data.length += bytes_to_read;
+        } else {
+            usb_read(ep, &command.data.payload[offset], space, NULL);
+            command.data.length += space;
+            uint8_t scratch[CRAZYRADIO_BULK_EP_MPS];
+            usb_read(ep, scratch, bytes_to_read - space, NULL);
+        }
+        if (bytes_to_read < CRAZYRADIO_BULK_EP_MPS) {
+            accumulating = false;
+            k_msgq_put(&command_queue, &command, K_FOREVER);
+        }
+        return;
+    }
 
     command.type = command_data;
-	
-    usb_read(ep, NULL, 0, &bytes_to_read);
-	// LOG_DBG("ep 0x%x, bytes to read %d ", ep, bytes_to_read);
-    if (bytes_to_read > 64) {
-        bytes_to_read = 64;
+    if (bytes_to_read > sizeof(command.data.payload)) {
+        usb_read(ep, command.data.payload, sizeof(command.data.payload), NULL);
+        uint8_t scratch[CRAZYRADIO_BULK_EP_MPS];
+        usb_read(ep, scratch, bytes_to_read - sizeof(command.data.payload), NULL);
+        command.data.length = sizeof(command.data.payload);
+    } else {
+        usb_read(ep, command.data.payload, bytes_to_read, NULL);
+        command.data.length = bytes_to_read;
     }
-	usb_read(ep, command.data.payload, bytes_to_read, NULL);
 
-	command.data.length = bytes_to_read;
-
+    if (bytes_to_read == CRAZYRADIO_BULK_EP_MPS) {
+        accumulating = true;
+        return;
+    }
     k_msgq_put(&command_queue, &command, K_FOREVER);
-
 }
 
 void crazyradio_in_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
@@ -193,6 +233,9 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define CHANNEL_SCANN     0x21
 #define SET_MODE          0x22
 #define SET_INLINE_MODE   0x23
+#define SET_RADIO_MODE 0x24
+#define SET_SNIFFER_ADDRESS 0x25
+#define GET_SNIFFER_DROP_COUNT 0x26
 #define SET_PACKET_LOSS_SIMULATION 0x30
 #define RESET_TO_BOOTLOADER 0xff
 
@@ -233,6 +276,8 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             setup->bRequest == SET_CONT_CARRIER ||
             setup->bRequest == SET_MODE ||
             (setup->bRequest == SET_INLINE_MODE && setup->wValue <= INLINE_MODE_ON_WITH_RSSI) ||
+            setup->bRequest == SET_SNIFFER_ADDRESS ||
+            (setup->bRequest == SET_RADIO_MODE && setup->wValue <= 1) ||
             setup->bRequest == SET_PACKET_LOSS_SIMULATION) {
             
             LOG_DBG("Queuing command %d", setup->bRequest);
@@ -260,6 +305,12 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
         } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_host(setup)) {
             *data = state.scan_result;
             *len = MIN(state.scan_result_length, setup->wLength);
+        }
+        else if (setup->bRequest == GET_SNIFFER_DROP_COUNT && usb_reqtype_is_to_host(setup)) {
+            static uint32_t drop_count_le;
+            drop_count_le = sys_cpu_to_le32(atomic_get(&sniffer_drop_count));
+            *data = (uint8_t *)&drop_count_le;
+            *len = MIN(4, setup->wLength);
         }
         else if (setup->bRequest == RESET_TO_BOOTLOADER) {
             LOG_DBG("Vendor request: RESET_TO_BOOTLOADER");
@@ -299,7 +350,7 @@ USBD_DEFINE_CFG_DATA(crazyradio_config) = {
 	.endpoint = ep_cfg,
 };
 
-#define USB_THREAD_STACK_SIZE 500
+#define USB_THREAD_STACK_SIZE 1024
 #define USB_THREAD_PRIORITY 5
 
 static void usb_thread(void *, void *, void *);
@@ -316,6 +367,58 @@ static void usb_thread(void *, void *, void *) {
     uint8_t arc_counter;
 
     while(1) {
+        if (state.sniffer_mode) {
+            // In sniffer mode: poll command queue for setup commands (non-blocking)
+            if (k_msgq_get(&command_queue, &command, K_NO_WAIT) == 0) {
+                if (command.type == command_setup) {
+                    k_mutex_lock(&usb_radio_mutex, K_FOREVER);
+                    handle_vendor_command(&command.setup);
+                    k_mutex_unlock(&usb_radio_mutex);
+                }
+                else if (command.type == command_data) {
+                    if (command.data.length < 6) {
+                        // Need at least 5 address bytes + 1 byte payload
+                        continue;
+                    }
+                    uint8_t address[5];
+                    memcpy(address, command.data.payload, 5);
+                    uint8_t payload_length = command.data.length - 5;
+                    if (payload_length > ESB_MAX_PAYLOAD_LENGTH) {
+                        payload_length = ESB_MAX_PAYLOAD_LENGTH;
+                    }
+                    packet.length = payload_length;
+                    memcpy(packet.data, &command.data.payload[5], payload_length);
+
+                    k_mutex_lock(&usb_radio_mutex, K_FOREVER);
+                    esb_sniffer_send(&packet, address);
+                    k_mutex_unlock(&usb_radio_mutex);
+
+                    led_pulse_green(K_MSEC(50));
+                }
+            }
+
+            // Poll sniffer queue for received packets
+            static struct esbSnifferPacket_s sniffer_pkt;
+            if (k_msgq_get(&sniffer_queue, &sniffer_pkt, K_MSEC(1)) == 0) {
+                // Format: total_length(1) + rssi(1) + pipe(1) + timestamp(4) + payload(0-32)
+                uint8_t total_length = 7 + sniffer_pkt.length;
+                state.usb_answer[0] = total_length;
+                state.usb_answer[1] = sniffer_pkt.rssi;
+                state.usb_answer[2] = sniffer_pkt.pipe;
+                memcpy(&state.usb_answer[3], &sniffer_pkt.timestamp_us, 4);
+                if (sniffer_pkt.length > 0) {
+                    memcpy(&state.usb_answer[7], sniffer_pkt.data, sniffer_pkt.length);
+                }
+
+                usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, total_length, NULL);
+                if (total_length == CRAZYRADIO_BULK_EP_MPS) {
+                    usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, 0, NULL);
+                }
+                led_pulse_green(K_MSEC(50));
+            }
+            continue;
+        }
+
         k_msgq_get(&command_queue, &command, K_FOREVER);
 
         k_mutex_lock(&usb_radio_mutex, K_FOREVER);
@@ -505,7 +608,7 @@ static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length) {
         if (esb_send_packet(&packet, &ack, &rssi, &retry)) {
             led_pulse_green(K_MSEC(50));
             state.scan_result[state.scan_result_length++] = channel;
-            if (state.scan_result_length >= 63) {
+            if (state.scan_result_length >= ESB_MAX_PAYLOAD_LENGTH) {
                 return;
             }
         } else {
@@ -567,6 +670,30 @@ static void handle_vendor_command(struct setup_command* setup) {
         esb_set_continuous_carrier(enable);
     } else if (setup->setup_packet.bRequest == SET_MODE && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Mode %d", setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_RADIO_MODE && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting radio mode %d", setup->setup_packet.wValue);
+        if (setup->setup_packet.wValue == 1) {
+            // Enter sniffer mode
+            state.sniffer_mode = true;
+            state.inline_mode = false;
+            state.inline_rssi_mode = false;
+            k_msgq_purge(&sniffer_queue);
+            atomic_set(&sniffer_drop_count, 0);
+            esb_sniffer_start(sniffer_rx_callback);
+            led_set_blue(true);
+        } else if (setup->setup_packet.wValue == 0) {
+            // Exit sniffer mode, back to normal PTX mode
+            esb_sniffer_stop();
+            state.sniffer_mode = false;
+            led_set_blue(false);
+        }
+    } else if (setup->setup_packet.bRequest == SET_SNIFFER_ADDRESS && setup->setup_packet.wLength == 5) {
+        LOG_DBG("Setting sniffer address pipe %d", setup->setup_packet.wValue);
+        if (setup->setup_packet.wValue == 0) {
+            esb_set_address(setup->data);
+        } else if (setup->setup_packet.wValue == 1) {
+            esb_set_address_pipe1(setup->data);
+        }
     } else if (setup->setup_packet.bRequest == SET_INLINE_MODE && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio Inline Mode %d", setup->setup_packet.wValue);
         state.inline_mode = setup->setup_packet.wValue != 0;
