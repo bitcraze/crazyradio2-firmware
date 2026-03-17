@@ -13,6 +13,8 @@
 #include "led.h"
 #include "system.h"
 
+#define USB_ANSWER_MAX_LENGTH 128
+
 #include <hal/nrf_radio.h>
 
 #include <zephyr/sys/atomic.h>
@@ -30,7 +32,7 @@ char* command_type_name[] = {
 };
 
 struct data_command {
-    char payload[128];
+    char payload[USB_ANSWER_MAX_LENGTH];
     uint32_t length;
 };
 
@@ -63,12 +65,12 @@ static struct {
     uint8_t datarate;
 	uint8_t channel;
     bool ack_enabled;
-    uint8_t scan_result[63];
+    uint8_t scan_result[ESB_MAX_PAYLOAD_LENGTH];
     int scan_result_length;
     bool inline_mode;
     bool inline_rssi_mode;
     bool sniffer_mode;
-    char usb_answer[128];
+    char usb_answer[USB_ANSWER_MAX_LENGTH];
 } state = {
     .datarate = 2,
 	.channel = 42,
@@ -381,8 +383,8 @@ static void usb_thread(void *, void *, void *) {
                     uint8_t address[5];
                     memcpy(address, command.data.payload, 5);
                     uint8_t payload_length = command.data.length - 5;
-                    if (payload_length > 63) {
-                        payload_length = 63;
+                    if (payload_length > ESB_MAX_PAYLOAD_LENGTH) {
+                        payload_length = ESB_MAX_PAYLOAD_LENGTH;
                     }
                     packet.length = payload_length;
                     memcpy(packet.data, &command.data.payload[5], payload_length);
@@ -606,7 +608,7 @@ static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length) {
         if (esb_send_packet(&packet, &ack, &rssi, &retry)) {
             led_pulse_green(K_MSEC(50));
             state.scan_result[state.scan_result_length++] = channel;
-            if (state.scan_result_length >= 63) {
+            if (state.scan_result_length >= ESB_MAX_PAYLOAD_LENGTH) {
                 return;
             }
         } else {

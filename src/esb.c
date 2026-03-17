@@ -73,8 +73,8 @@ static void radio_isr(void *arg)
         if (crc_ok && sniffer_callback) {
             static struct esbSnifferPacket_s pkt;
             pkt.length = sniffer_rx_buffer.length;
-            if (pkt.length > 63) {
-                pkt.length = 63;
+            if (pkt.length > ESB_MAX_PAYLOAD_LENGTH) {
+                pkt.length = ESB_MAX_PAYLOAD_LENGTH;
             }
             pkt.rssi = nrf_radio_rssi_sample_get(NRF_RADIO);
             pkt.pipe = nrf_radio_rxmatch_get(NRF_RADIO);
@@ -484,12 +484,12 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     sniffer_active = true;
     sniffer_callback = cb;
 
-    // Reconfigure radio for 63-byte max packet length
+    // Reconfigure radio for max packet length
     nrf_radio_packet_conf_t radioConfig = {0,};
     radioConfig.lflen = 6;
     radioConfig.s0len = 0;
     radioConfig.s1len = 3;
-    radioConfig.maxlen = 63;
+    radioConfig.maxlen = ESB_MAX_PAYLOAD_LENGTH;
     radioConfig.statlen = 0;
     radioConfig.balen = 4;
     radioConfig.big_endian = true;

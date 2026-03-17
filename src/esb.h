@@ -25,6 +25,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define ESB_MAX_PAYLOAD_LENGTH 63
+
 void esb_init();
 void esb_deinit();
 
@@ -82,7 +84,7 @@ void esb_set_address(uint8_t address[5]);
 struct esbPacket_s {
     uint8_t length;
     uint8_t s1;
-    char data[63];
+    char data[ESB_MAX_PAYLOAD_LENGTH];
 } __attribute__((packed));
 
 /**
@@ -130,7 +132,7 @@ struct esbSnifferPacket_s {
     uint8_t rssi;
     uint8_t pipe;
     uint32_t timestamp_us;
-    uint8_t data[63];
+    uint8_t data[ESB_MAX_PAYLOAD_LENGTH];
 };
 
 /**
