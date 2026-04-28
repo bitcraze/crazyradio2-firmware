@@ -65,6 +65,7 @@ K_SEM_DEFINE(usb_in_ready, 1, 1);
 
 static atomic_t sniffer_drop_count;
 static atomic_t inline_tx_sequence;
+static struct usb_response usb_in_flight_response;
 
 static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
 static void handle_vendor_command(struct setup_command* setup);
@@ -169,6 +170,25 @@ static void sniffer_rx_callback(const struct esbSnifferPacket_s *pkt)
     }
 }
 
+static int usb_in_submit_response(const struct usb_response *response)
+{
+    memcpy(&usb_in_flight_response, response, sizeof(usb_in_flight_response));
+
+    uint32_t written = 0;
+    int ret = usb_write(CRAZYRADIO_IN_EP_ADDR, usb_in_flight_response.payload,
+                        usb_in_flight_response.length, &written);
+    if (ret != 0 || written != usb_in_flight_response.length) {
+        k_sem_give(&usb_in_ready);
+        LOG_WRN("inline[%u] usb_write failed: ret=%d written=%u expected=%u",
+                usb_in_flight_response.inline_seq, ret, written, usb_in_flight_response.length);
+    } else {
+        LOG_DBG("inline[%u] usb_write ok: len=%u", usb_in_flight_response.inline_seq,
+                usb_in_flight_response.length);
+    }
+
+    return ret;
+}
+
 static int inline_usb_write(uint32_t seq, const void *data, uint32_t length)
 {
     struct usb_response response = {
@@ -177,6 +197,10 @@ static int inline_usb_write(uint32_t seq, const void *data, uint32_t length)
     };
 
     memcpy(response.payload, data, response.length);
+
+    if (k_sem_take(&usb_in_ready, K_NO_WAIT) == 0) {
+        return usb_in_submit_response(&response);
+    }
 
     int ret = k_msgq_put(&response_queue, &response, K_MSEC(100));
     if (ret != 0) {
@@ -400,15 +424,7 @@ static void usb_in_thread(void *, void *, void *)
         k_msgq_get(&response_queue, &response, K_FOREVER);
         k_sem_take(&usb_in_ready, K_FOREVER);
 
-        uint32_t written = 0;
-        int ret = usb_write(CRAZYRADIO_IN_EP_ADDR, response.payload, response.length, &written);
-        if (ret != 0 || written != response.length) {
-            k_sem_give(&usb_in_ready);
-            LOG_WRN("inline[%u] usb_write failed: ret=%d written=%u expected=%u",
-                    response.inline_seq, ret, written, response.length);
-        } else {
-            LOG_DBG("inline[%u] usb_write ok: len=%u", response.inline_seq, response.length);
-        }
+        usb_in_submit_response(&response);
     }
 }
 
