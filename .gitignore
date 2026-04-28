@@ -10,3 +10,5 @@ crazyradio2.zip
 .cache/
 
 src/crazyradio2_firmware.egg-info
+
+.worktrees/

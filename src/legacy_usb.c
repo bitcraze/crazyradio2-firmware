@@ -50,12 +50,22 @@ struct usb_command {
     };
 };
 
+struct usb_response {
+    uint32_t inline_seq;
+    uint32_t length;
+    char payload[USB_ANSWER_MAX_LENGTH];
+};
+
 K_MSGQ_DEFINE(command_queue, sizeof(struct usb_command), 10, 4);
 K_MSGQ_DEFINE(sniffer_queue, sizeof(struct esbSnifferPacket_s), 8, 4);
+K_MSGQ_DEFINE(response_queue, sizeof(struct usb_response), 10, 4);
 
 K_MUTEX_DEFINE(usb_radio_mutex);
+K_SEM_DEFINE(usb_in_ready, 1, 1);
 
 static atomic_t sniffer_drop_count;
+static atomic_t inline_tx_sequence;
+static struct usb_response usb_in_flight_response;
 
 static void fw_scan(uint8_t start, uint8_t stop, char* data, int data_length);
 static void handle_vendor_command(struct setup_command* setup);
@@ -160,6 +170,48 @@ static void sniffer_rx_callback(const struct esbSnifferPacket_s *pkt)
     }
 }
 
+static int usb_in_submit_response(const struct usb_response *response)
+{
+    memcpy(&usb_in_flight_response, response, sizeof(usb_in_flight_response));
+
+    uint32_t written = 0;
+    int ret = usb_write(CRAZYRADIO_IN_EP_ADDR, usb_in_flight_response.payload,
+                        usb_in_flight_response.length, &written);
+    if (ret != 0 || written != usb_in_flight_response.length) {
+        k_sem_give(&usb_in_ready);
+        LOG_WRN("inline[%u] usb_write failed: ret=%d written=%u expected=%u",
+                usb_in_flight_response.inline_seq, ret, written, usb_in_flight_response.length);
+    } else {
+        LOG_DBG("inline[%u] usb_write ok: len=%u", usb_in_flight_response.inline_seq,
+                usb_in_flight_response.length);
+    }
+
+    return ret;
+}
+
+static int inline_usb_write(uint32_t seq, const void *data, uint32_t length)
+{
+    struct usb_response response = {
+        .inline_seq = seq,
+        .length = MIN(length, USB_ANSWER_MAX_LENGTH),
+    };
+
+    memcpy(response.payload, data, response.length);
+
+    if (k_sem_take(&usb_in_ready, K_NO_WAIT) == 0) {
+        return usb_in_submit_response(&response);
+    }
+
+    int ret = k_msgq_put(&response_queue, &response, K_MSEC(100));
+    if (ret != 0) {
+        LOG_WRN("inline[%u] response queue full, dropping response: ret=%d len=%u", seq, ret, length);
+    } else {
+        LOG_DBG("inline[%u] queued USB IN response: len=%u", seq, response.length);
+    }
+
+    return ret;
+}
+
 void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 {
     uint32_t bytes_to_read;
@@ -207,7 +259,7 @@ void crazyradio_out_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 
 void crazyradio_in_cb(uint8_t ep, enum usb_dc_ep_cb_status_code cb_status)
 {
-	// Nop
+    k_sem_give(&usb_in_ready);
 }
 
 static struct usb_ep_cfg_data ep_cfg[] = {
@@ -354,10 +406,27 @@ USBD_DEFINE_CFG_DATA(crazyradio_config) = {
 #define USB_THREAD_PRIORITY 5
 
 static void usb_thread(void *, void *, void *);
+static void usb_in_thread(void *, void *, void *);
 
 K_THREAD_DEFINE(usb_tid, USB_THREAD_STACK_SIZE,
                 usb_thread, NULL, NULL, NULL,
                 USB_THREAD_PRIORITY, 0, 0);
+
+K_THREAD_DEFINE(usb_in_tid, USB_THREAD_STACK_SIZE,
+                usb_in_thread, NULL, NULL, NULL,
+                USB_THREAD_PRIORITY, 0, 0);
+
+static void usb_in_thread(void *, void *, void *)
+{
+    static struct usb_response response;
+
+    while (1) {
+        k_msgq_get(&response_queue, &response, K_FOREVER);
+        k_sem_take(&usb_in_ready, K_FOREVER);
+
+        usb_in_submit_response(&response);
+    }
+}
 
 static void usb_thread(void *, void *, void *) {
     static struct usb_command command;
@@ -423,8 +492,10 @@ static void usb_thread(void *, void *, void *) {
 
         k_mutex_lock(&usb_radio_mutex, K_FOREVER);
         if (command.type == command_data) {
+            uint32_t inline_seq = 0;
             
             if (state.inline_mode) {
+                inline_seq = atomic_inc(&inline_tx_sequence) + 1;
                 // Get the header
                 inline_mode_out_header *header = (inline_mode_out_header *)command.data.payload;
                 state.channel = header->channel;
@@ -442,7 +513,11 @@ static void usb_thread(void *, void *, void *) {
                 memcpy(packet.data, &command.data.payload[sizeof(inline_mode_out_header)], payload_length);
                 packet.length = payload_length;
 
-                LOG_ERR("Inline mode packet: chan %d, dr %d, ack %d, addr %02x%02x%02x%02x%02x, len %d", state.channel, state.datarate, state.ack_enabled, header->address[0], header->address[1], header->address[2], header->address[3], header->address[4], payload_length);
+                LOG_DBG("inline[%u] USB OUT: usb_len=%u header_len=%u payload_len=%d chan=%d dr=%d ack=%d addr=%02x%02x%02x%02x%02x",
+                        inline_seq, command.data.length, header->length, payload_length, state.channel,
+                        state.datarate, state.ack_enabled, header->address[0], header->address[1],
+                        header->address[2], header->address[3], header->address[4]);
+                LOG_HEXDUMP_DBG(packet.data, packet.length, "inline radio TX payload");
             } else if (!state.ack_enabled && command.data.length > 32) {
                 // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
                 // this means that the buffer actually contains 2 packets to send
@@ -467,6 +542,14 @@ static void usb_thread(void *, void *, void *) {
                 
                 // Send the packet
                 bool acked = esb_send_packet(&packet, &ack, &rssi, &arc_counter);
+
+                if (state.inline_mode) {
+                    LOG_DBG("inline[%u] radio result: acked=%d ack_len=%u rssi=%u retry=%u",
+                            inline_seq, acked, ack.length, rssi, arc_counter);
+                    if (acked && ack.length > 0) {
+                        LOG_HEXDUMP_DBG(ack.data, ack.length, "inline radio ACK payload");
+                    }
+                }
 
                 if (acked || !state.ack_enabled) {
                     led_pulse_green(K_MSEC(50));
@@ -494,9 +577,7 @@ static void usb_thread(void *, void *, void *) {
                         memcpy(&state.usb_answer[sizeof(inline_mode_in_header)], ack.data, ack.length);
                     }
 
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, usb_header->length, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
+                    inline_usb_write(inline_seq, state.usb_answer, usb_header->length);
                 } else if (state.inline_mode && state.inline_rssi_mode) {
                     // Prepare the inline with rssi mode header
                     inline_rssi_mode_in_header *usb_header = (inline_rssi_mode_in_header *)state.usb_answer;
@@ -513,9 +594,7 @@ static void usb_thread(void *, void *, void *) {
                         memcpy(&state.usb_answer[sizeof(inline_rssi_mode_in_header)], ack.data, ack.length);
                     }
 
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, state.usb_answer, usb_header->length, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
+                    inline_usb_write(inline_seq, state.usb_answer, usb_header->length);
                 } else {
                     if (!state.ack_enabled) {
                         led_pulse_green(K_MSEC(50));
@@ -549,9 +628,7 @@ static void usb_thread(void *, void *, void *) {
                         .arc_counter = 0,
                     };
 
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, (void*) &invalid_settings_header, invalid_settings_header.length, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
+                    inline_usb_write(inline_seq, &invalid_settings_header, invalid_settings_header.length);
                 } else if (state.inline_mode && state.inline_rssi_mode) {
                     // Prepare the inline with rssi mode header
                     inline_rssi_mode_in_header invalid_settings_header = {
@@ -563,9 +640,7 @@ static void usb_thread(void *, void *, void *) {
                         .rssi_dbm = 0,
                     };
 
-                    if (usb_write(CRAZYRADIO_IN_EP_ADDR, (void*) &invalid_settings_header, invalid_settings_header.length, NULL)) {
-                        LOG_DBG("ep 0x%x", CRAZYRADIO_IN_EP_ADDR);
-                    }
+                    inline_usb_write(inline_seq, &invalid_settings_header, invalid_settings_header.length);
                 } else {
                     char no_ack_answer[1] = {0};
             
