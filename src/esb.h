@@ -27,6 +27,27 @@
 
 #define ESB_MAX_PAYLOAD_LENGTH 63
 
+typedef enum {
+    esbTestModeIdle = 0,
+    esbTestModeUnmodulatedCarrier = 1,
+    esbTestModeModulatedCarrier1M = 2,
+    esbTestModeModulatedCarrier2M = 3,
+} esbTestMode_t;
+
+struct esbTestState_s {
+    uint8_t mode;
+    uint8_t channel;
+    uint8_t nrf_tx_power;
+    uint8_t pa_power;
+} __attribute__((packed));
+
+bool esb_is_valid_nrf_tx_power(uint8_t raw_power);
+bool esb_test_mode_is_active(void);
+bool esb_set_test_mode(esbTestMode_t mode);
+bool esb_set_test_nrf_tx_power(uint8_t raw_power);
+bool esb_set_test_pa_power(uint8_t power);
+void esb_get_test_state(struct esbTestState_s *test_state);
+
 void esb_init();
 void esb_deinit();
 
@@ -37,7 +58,7 @@ void esb_deinit();
  * 
  * @param channel A channel from 0 to 100
  */
-void esb_set_channel(uint8_t channel);
+void esb_set_channel(uint16_t channel);
 
 /**
  * @brief Possible radio bitrate
@@ -110,7 +131,7 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
  * purposes, such as measuring output power or spectrum analysis.
  * 
  * @param enable true to enable continuous carrier mode, false to disable it
- * @return true if the operation was successful, false if no change was made
+ * @return true if the operation was successful, false otherwise
  */
 bool esb_set_continuous_carrier(bool enable);
 

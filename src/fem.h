@@ -34,6 +34,8 @@ void fem_rxen_set(bool enable);
 
 void fem_set_power(uint8_t power);
 
+uint8_t fem_get_power(void);
+
 void fem_set_antenna(uint8_t antenna);
 
 bool fem_is_lna_enabled(void);
