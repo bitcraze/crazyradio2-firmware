@@ -63,7 +63,7 @@ static void handle_vendor_command(struct setup_command* setup);
 // state
 static struct {
     uint8_t datarate;
-	uint8_t channel;
+	uint16_t channel;
     bool ack_enabled;
     uint8_t scan_result[ESB_MAX_PAYLOAD_LENGTH];
     int scan_result_length;
@@ -237,6 +237,10 @@ static struct usb_ep_cfg_data ep_cfg[] = {
 #define SET_SNIFFER_ADDRESS 0x25
 #define GET_SNIFFER_DROP_COUNT 0x26
 #define SET_PACKET_LOSS_SIMULATION 0x30
+#define SET_TEST_MODE          0x31
+#define SET_TEST_NRF_TX_POWER  0x32
+#define SET_TEST_PA_POWER      0x33
+#define GET_TEST_STATE         0x34
 #define RESET_TO_BOOTLOADER 0xff
 
 // Inline mode values
@@ -278,7 +282,15 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
             (setup->bRequest == SET_INLINE_MODE && setup->wValue <= INLINE_MODE_ON_WITH_RSSI) ||
             setup->bRequest == SET_SNIFFER_ADDRESS ||
             (setup->bRequest == SET_RADIO_MODE && setup->wValue <= 1) ||
-            setup->bRequest == SET_PACKET_LOSS_SIMULATION) {
+            setup->bRequest == SET_PACKET_LOSS_SIMULATION ||
+            (setup->bRequest == SET_TEST_MODE && usb_reqtype_is_to_device(setup) &&
+             setup->wIndex == 0 && setup->wLength == 0 &&
+             setup->wValue <= esbTestModeModulatedCarrier2M) ||
+            (setup->bRequest == SET_TEST_NRF_TX_POWER && usb_reqtype_is_to_device(setup) &&
+             setup->wIndex == 0 && setup->wLength == 0 && setup->wValue <= 0xff &&
+             esb_is_valid_nrf_tx_power((uint8_t)setup->wValue)) ||
+            (setup->bRequest == SET_TEST_PA_POWER && usb_reqtype_is_to_device(setup) &&
+             setup->wIndex == 0 && setup->wLength == 0 && setup->wValue <= 31)) {
             
             LOG_DBG("Queuing command %d", setup->bRequest);
 
@@ -305,6 +317,14 @@ static int crazyradio_vendor_handler(struct usb_setup_packet *setup,
         } else if (setup->bRequest == CHANNEL_SCANN && usb_reqtype_is_to_host(setup)) {
             *data = state.scan_result;
             *len = MIN(state.scan_result_length, setup->wLength);
+        }
+        else if (setup->bRequest == GET_TEST_STATE && usb_reqtype_is_to_host(setup) &&
+                 setup->wValue == 0 && setup->wIndex == 0 &&
+                 setup->wLength == sizeof(struct esbTestState_s)) {
+            static struct esbTestState_s test_state;
+            esb_get_test_state(&test_state);
+            *data = (uint8_t *)&test_state;
+            *len = sizeof(test_state);
         }
         else if (setup->bRequest == GET_SNIFFER_DROP_COUNT && usb_reqtype_is_to_host(setup)) {
             static uint32_t drop_count_le;
@@ -422,6 +442,35 @@ static void usb_thread(void *, void *, void *) {
         k_msgq_get(&command_queue, &command, K_FOREVER);
 
         k_mutex_lock(&usb_radio_mutex, K_FOREVER);
+        if (command.type == command_data && esb_test_mode_is_active()) {
+            if (state.inline_mode && !state.inline_rssi_mode) {
+                inline_mode_in_header test_mode_header = {
+                    .length = sizeof(inline_mode_in_header),
+                    .ack_received = 0,
+                    .rssi_lt_64dbm = 0,
+                    .invalid_settings = 0,
+                    .arc_counter = 0,
+                };
+                usb_write(CRAZYRADIO_IN_EP_ADDR, (void *)&test_mode_header,
+                          test_mode_header.length, NULL);
+            } else if (state.inline_mode && state.inline_rssi_mode) {
+                inline_rssi_mode_in_header test_mode_header = {
+                    .length = sizeof(inline_rssi_mode_in_header),
+                    .ack_received = 0,
+                    .rssi_lt_64dbm = 0,
+                    .invalid_settings = 0,
+                    .arc_counter = 0,
+                    .rssi_dbm = 0,
+                };
+                usb_write(CRAZYRADIO_IN_EP_ADDR, (void *)&test_mode_header,
+                          test_mode_header.length, NULL);
+            } else if (state.ack_enabled) {
+                char no_ack_answer[1] = {0};
+                usb_write(CRAZYRADIO_IN_EP_ADDR, no_ack_answer, 1, NULL);
+            }
+            k_mutex_unlock(&usb_radio_mutex);
+            continue;
+        }
         if (command.type == command_data) {
             
             if (state.inline_mode) {
@@ -443,7 +492,7 @@ static void usb_thread(void *, void *, void *) {
                 packet.length = payload_length;
 
                 LOG_ERR("Inline mode packet: chan %d, dr %d, ack %d, addr %02x%02x%02x%02x%02x, len %d", state.channel, state.datarate, state.ack_enabled, header->address[0], header->address[1], header->address[2], header->address[3], header->address[4], payload_length);
-            } else if (!state.ack_enabled && command.data.length > 32) {
+            } else if (state.datarate != 0 && state.channel <= 100 && !state.ack_enabled && command.data.length > 32) {
                 // If we are not receiving ack (ie. broadcast) and the received data is > 32 bytes,
                 // this means that the buffer actually contains 2 packets to send
                 // Send the first one right away
@@ -621,9 +670,7 @@ static void handle_vendor_command(struct setup_command* setup) {
     if (setup->setup_packet.bRequest == SET_RADIO_CHANNEL && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio channel %d", setup->setup_packet.wValue);
         uint16_t channel = setup->setup_packet.wValue;
-        if (channel <= 100) {
-            esb_set_channel(channel);
-        }
+        esb_set_channel(channel);
         // If channel >100 used, packets will be ignored (ie. virtually not acked)
         state.channel = channel;
         // Reset inline mode
@@ -650,7 +697,7 @@ static void handle_vendor_command(struct setup_command* setup) {
         LOG_DBG("Setting radio power %d", setup->setup_packet.wValue);
         uint8_t power = MIN(setup->setup_packet.wValue, 3);
         uint8_t fem_power = power_mapping[power];
-        fem_set_power(fem_power);
+        esb_set_test_pa_power(fem_power);
     } else if (setup->setup_packet.bRequest == SET_RADIO_ARD && setup->setup_packet.wLength == 0) {
         LOG_DBG("Setting radio ARD %d", setup->setup_packet.wValue);
     } else if (setup->setup_packet.bRequest == SET_RADIO_ARC && setup->setup_packet.wLength == 0) {
@@ -698,6 +745,18 @@ static void handle_vendor_command(struct setup_command* setup) {
         LOG_DBG("Setting radio Inline Mode %d", setup->setup_packet.wValue);
         state.inline_mode = setup->setup_packet.wValue != 0;
         state.inline_rssi_mode = setup->setup_packet.wValue == INLINE_MODE_ON_WITH_RSSI;
+    } else if (setup->setup_packet.bRequest == SET_TEST_MODE &&
+               setup->setup_packet.wIndex == 0 && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting test mode %d", setup->setup_packet.wValue);
+        esb_set_test_mode((esbTestMode_t)setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_TEST_NRF_TX_POWER &&
+               setup->setup_packet.wIndex == 0 && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting test nRF TX power %d", setup->setup_packet.wValue);
+        esb_set_test_nrf_tx_power((uint8_t)setup->setup_packet.wValue);
+    } else if (setup->setup_packet.bRequest == SET_TEST_PA_POWER &&
+               setup->setup_packet.wIndex == 0 && setup->setup_packet.wLength == 0) {
+        LOG_DBG("Setting test PA power %d", setup->setup_packet.wValue);
+        esb_set_test_pa_power((uint8_t)setup->setup_packet.wValue);
     } else if (setup->setup_packet.bRequest == SET_PACKET_LOSS_SIMULATION && setup->setup_packet.wLength == 2) {
         uint8_t packet_loss_percent = setup->data[0];
         uint8_t ack_loss_percent = setup->data[1];

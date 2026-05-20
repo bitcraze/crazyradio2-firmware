@@ -95,6 +95,10 @@ Crazyradio vendor requests summary:
 |  0x40           | SET\_SNIFFER\_ADDRESS (0x25)           | Pipe (0-1) | Zero    | 5        | Address|
 |  0xC0           | GET\_SNIFFER\_DROP\_COUNT (0x26)       | Zero       | Zero    | 4        | uint32\_t LE|
 |  0x40           | SET\_PACKET\_LOSS\_SIMULATION (0x30)   | Zero       | Zero    | 2        | [packet_loss_percent: u8, ack_loss_percent:u8]
+|  0x40           | SET\_TEST\_MODE (0x31)                  | Mode (0-3) | Zero    | Zero     | None |
+|  0x40           | SET\_TEST\_NRF\_TX\_POWER (0x32)        | Raw TXPOWER| Zero    | Zero     | None |
+|  0x40           | SET\_TEST\_PA\_POWER (0x33)             | PA power   | Zero    | Zero     | None |
+|  0xC0           | GET\_TEST\_STATE (0x34)                 | Zero       | Zero    | 4        | [mode, channel, nRF TXPOWER, PA power] |
 |  0x40           | LAUNCH\_BOOTLOADER (0xFF)     | Zero       | Zero    | Zero     | None|
 
 ### Set radio channel
@@ -469,6 +473,72 @@ This means that the receiver will receive the packet, send the ack
 but the ack packet might be dropped by Crazyradio and reported as lost.
 
 Both case will look the same on the PC side: the packet is reported as not acked.
+
+---
+
+### Radio TEST controls
+
+The TEST requests are intended for radio test and measurement workflows.
+They do not replace the legacy Crazyradio PA-compatible requests used for
+normal Crazyflie communication, but power settings are applied to the firmware
+radio state and affect subsequent normal use until changed again.
+
+SET\_RADIO\_CHANNEL (0x01) is reused for TEST channel control. When a TEST
+carrier is active, changing the channel immediately retunes and restarts the
+active TEST carrier.
+
+**SET\_TEST\_MODE:**
+
+|  bmRequestType  | bRequest                    | wValue     | wIndex  | wLength  | data  |
+|  ---------------| ----------------------------| -----------| --------| ---------| ------|
+|  0x40           | SET\_TEST\_MODE (0x31)      | Mode (0-3) | Zero    | Zero     | None  |
+
+|  Mode  | Meaning                                           |
+|  ------| --------------------------------------------------|
+|  0     | Idle                                              |
+|  1     | Continuous unmodulated carrier                    |
+|  2     | Continuous modulated carrier, Nordic 1 Mbps       |
+|  3     | Continuous modulated carrier, Nordic 2 Mbps       |
+
+Invalid modes stall the USB setup request.
+
+**SET\_TEST\_NRF\_TX\_POWER:**
+
+|  bmRequestType  | bRequest                             | wValue      | wIndex  | wLength  | data  |
+|  ---------------| -------------------------------------| ------------| --------| ---------| ------|
+|  0x40           | SET\_TEST\_NRF\_TX\_POWER (0x32)    | Raw TXPOWER | Zero    | Zero     | None  |
+
+The wValue is the raw nRF52840 RADIO.TXPOWER register value. Accepted
+values include 0xD8, 0xEC, 0xF0, 0xF4, 0xF8, 0xFC, 0x00, and 0x02 through
+0x08 when supported. Invalid values stall the USB setup request. This setting
+also affects normal packet transmission until changed again.
+
+**SET\_TEST\_PA\_POWER:**
+
+|  bmRequestType  | bRequest                         | wValue   | wIndex  | wLength  | data  |
+|  ---------------| ---------------------------------| ---------| --------| ---------| ------|
+|  0x40           | SET\_TEST\_PA\_POWER (0x33)     | PA power | Zero    | Zero     | None  |
+
+The wValue is the nRF21540 TX gain and must be in the range 0..31. Invalid
+values stall the USB setup request. This setting also affects normal packet
+transmission until changed again.
+
+**GET\_TEST\_STATE:**
+
+|  bmRequestType  | bRequest                    | wValue  | wIndex  | wLength  | data                                  |
+|  ---------------| ----------------------------| --------| --------| ---------| --------------------------------------|
+|  0xC0           | GET\_TEST\_STATE (0x34)     | Zero    | Zero    | 4        | [mode, channel, nRF TXPOWER, PA power] |
+
+|  Offset  | Description                                             |
+|  --------| --------------------------------------------------------|
+|  0       | Current TEST mode                                       |
+|  1       | Current firmware-applied radio channel                  |
+|  2       | Current firmware-applied raw nRF52840 TXPOWER           |
+|  3       | Current firmware-applied nRF21540 PA gain               |
+
+Returned values are the firmware-applied hardware state, not GUI defaults.
+If startup firmware settings change later, GET\_TEST\_STATE reports those
+changed startup settings.
 
 ---
 

@@ -53,6 +53,8 @@ LOG_MODULE_REGISTER(fem);
 
 #include "radio_nrf5_fem.h"
 
+static uint8_t current_power;
+
 static void write_register(uint8_t address, uint8_t value);
 static uint8_t read_register(uint8_t address);
 
@@ -190,6 +192,8 @@ void fem_init() {
 	if (data[1] != 0x02) {
 		// TODO: Handle FEM communication error!
 	}
+
+	current_power = (read_register(0x00) >> 2) & 0x1f;
 #endif
 }
 
@@ -206,12 +210,17 @@ void fem_rxen_set(bool enable) {
 }
 
 void fem_set_power(uint8_t power) {
-#if defined(HAL_RADIO_FEM_IS_NRF21540)
 	uint8_t tx_gain = power & 0x1f;
+#if defined(HAL_RADIO_FEM_IS_NRF21540)
 	uint8_t confreg0 = tx_gain << 2;
 
 	write_register(0x00, confreg0);
 #endif
+	current_power = tx_gain;
+}
+
+uint8_t fem_get_power(void) {
+	return current_power;
 }
 
 static void write_register(uint8_t address, uint8_t value) {

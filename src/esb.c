@@ -27,6 +27,8 @@
 
 #include <zephyr/kernel.h>
 
+#include <string.h>
+
 #include <hal/nrf_radio.h>
 #include <nrfx_ppi.h>
 #include <nrfx_timer.h>
@@ -43,6 +45,18 @@ LOG_MODULE_REGISTER(esb);
 static K_MUTEX_DEFINE(radio_busy);
 static K_SEM_DEFINE(radioXferDone, 0, 1);
 
+#define ESB_DEFAULT_CHANNEL 42
+#define ESB_DEFAULT_NRF_TX_POWER ((uint8_t)NRF_RADIO_TXPOWER_0DBM)
+
+static esbTestMode_t test_mode = esbTestModeIdle;
+static uint8_t test_tx_packet[64];
+static uint8_t current_channel = ESB_DEFAULT_CHANNEL;
+static uint8_t current_nrf_tx_power = ESB_DEFAULT_NRF_TX_POWER;
+static nrf_radio_mode_t current_normal_radio_mode = NRF_RADIO_MODE_NRF_2MBIT;
+static uint8_t test_pa_power;
+
+static bool test_mode_is_modulated(void) { return test_mode == esbTestModeModulatedCarrier1M || test_mode == esbTestModeModulatedCarrier2M; }
+
 static bool isInit = false;
 static bool sending;
 static bool timeout;
@@ -53,12 +67,14 @@ static int arc = 3;
 static int packet_loss_percent = 0;
 static int ack_loss_percent = 0;
 
-static bool continuous_carrier_enabled = false;
-
 static bool sniffer_active = false;
 static esb_sniffer_rx_cb_t sniffer_callback = NULL;
 static struct esbPacket_s sniffer_rx_buffer;
 static uint8_t current_pipe0_address[5] = {0xe7, 0xe7, 0xe7, 0xe7, 0xe7};
+
+static void test_mode_stop_locked(void);
+static void test_mode_start_locked(void);
+static void test_mode_restart_locked(void);
 
 const nrfx_timer_t timer0 = NRFX_TIMER_INSTANCE(0);
 
@@ -66,6 +82,11 @@ static void radio_isr(void *arg)
 {
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
     nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+
+    if (test_mode_is_modulated()) {
+        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_START);
+        return;
+    }
 
     if (sniffer_active) {
         bool crc_ok = nrf_radio_crc_status_check(NRF_RADIO);
@@ -168,7 +189,7 @@ void esb_init()
 
     nrf_radio_power_set(NRF_RADIO, true);
 
-    nrf_radio_txpower_set(NRF_RADIO, NRF_RADIO_TXPOWER_0DBM);
+    nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)ESB_DEFAULT_NRF_TX_POWER);
 
     // Low level packet configuration
     nrf_radio_packet_conf_t radioConfig = {0,};
@@ -183,8 +204,9 @@ void esb_init()
     nrf_radio_packet_configure(NRF_RADIO, &radioConfig);
 
     // Configure channel and bitrate
-    nrf_radio_mode_set(NRF_RADIO, NRF_RADIO_MODE_NRF_2MBIT);
-    nrf_radio_frequency_set(NRF_RADIO, 2442); // Channel 42
+    current_normal_radio_mode = NRF_RADIO_MODE_NRF_2MBIT;
+    nrf_radio_mode_set(NRF_RADIO, current_normal_radio_mode);
+    nrf_radio_frequency_set(NRF_RADIO, 2400 + ESB_DEFAULT_CHANNEL);
 
     // Configure Addresses
     nrf_radio_base0_set(NRF_RADIO, 0xe7e7e7e7);
@@ -204,6 +226,11 @@ void esb_init()
     irq_enable(RADIO_IRQn);
 
     fem_init();
+
+    current_channel = ESB_DEFAULT_CHANNEL;
+    current_nrf_tx_power = (uint8_t)nrf_radio_txpower_get(NRF_RADIO);
+    test_pa_power = fem_get_power();
+    test_mode = esbTestModeIdle;
 
     ack_enabled = true;
     arc = 3;
@@ -225,6 +252,9 @@ void esb_deinit()
     nrf_radio_power_set(NRF_RADIO, false);
     irq_disable(RADIO_IRQn);
 
+    fem_txen_set(false);
+    test_mode = esbTestModeIdle;
+
     k_sem_reset(&radioXferDone);
 
     k_mutex_unlock(&radio_busy);
@@ -242,11 +272,154 @@ void esb_set_ack_enabled(bool enabled) {
     k_mutex_unlock(&radio_busy);
 }
 
-void esb_set_channel(uint8_t channel)
+bool esb_is_valid_nrf_tx_power(uint8_t raw_power)
+{
+#if defined(RADIO_TXPOWER_TXPOWER_Neg40dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG40DBM) {
+        return true;
+    }
+#endif
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG20DBM ||
+        raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG16DBM ||
+        raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG12DBM ||
+        raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG8DBM ||
+        raw_power == (uint8_t)NRF_RADIO_TXPOWER_NEG4DBM ||
+        raw_power == (uint8_t)NRF_RADIO_TXPOWER_0DBM) {
+        return true;
+    }
+#if defined(RADIO_TXPOWER_TXPOWER_Pos2dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS2DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos3dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS3DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos4dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS4DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos5dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS5DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos6dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS6DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos7dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS7DBM) {
+        return true;
+    }
+#endif
+#if defined(RADIO_TXPOWER_TXPOWER_Pos8dBm)
+    if (raw_power == (uint8_t)NRF_RADIO_TXPOWER_POS8DBM) {
+        return true;
+    }
+#endif
+
+    return false;
+}
+
+bool esb_test_mode_is_active(void)
+{
+    return test_mode != esbTestModeIdle;
+}
+
+void esb_get_test_state(struct esbTestState_s *test_state)
+{
+    if (test_state == NULL) {
+        return;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    test_state->mode = (uint8_t)test_mode;
+    test_state->channel = current_channel;
+    test_state->nrf_tx_power = current_nrf_tx_power;
+    test_pa_power = fem_get_power();
+    test_state->pa_power = test_pa_power;
+    k_mutex_unlock(&radio_busy);
+}
+
+bool esb_set_test_mode(esbTestMode_t mode)
+{
+    switch (mode) {
+        case esbTestModeIdle:
+        case esbTestModeUnmodulatedCarrier:
+        case esbTestModeModulatedCarrier1M:
+        case esbTestModeModulatedCarrier2M:
+            break;
+        default:
+            return false;
+    }
+
+    if (!isInit && mode != esbTestModeIdle) {
+        return false;
+    }
+
+    if (sniffer_active && mode != esbTestModeIdle) {
+        return false;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    if (test_mode != esbTestModeIdle) {
+        test_mode_stop_locked();
+    }
+    test_mode = mode;
+    if (mode != esbTestModeIdle && current_channel <= 100) {
+        test_mode_start_locked();
+    }
+    k_mutex_unlock(&radio_busy);
+    return true;
+}
+
+bool esb_set_test_nrf_tx_power(uint8_t raw_power)
+{
+    if (!esb_is_valid_nrf_tx_power(raw_power)) {
+        return false;
+    }
+
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    current_nrf_tx_power = raw_power;
+    if (test_mode != esbTestModeIdle) {
+        test_mode_restart_locked();
+    } else {
+        nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)raw_power);
+        current_nrf_tx_power = (uint8_t)nrf_radio_txpower_get(NRF_RADIO);
+    }
+    k_mutex_unlock(&radio_busy);
+    return true;
+}
+
+bool esb_set_test_pa_power(uint8_t power)
+{
+    if (power > 31) {
+        return false;
+    }
+    k_mutex_lock(&radio_busy, K_FOREVER);
+    fem_set_power(power);
+    test_pa_power = fem_get_power();
+    k_mutex_unlock(&radio_busy);
+    return true;
+}
+
+void esb_set_channel(uint16_t channel)
 {
     k_mutex_lock(&radio_busy, K_FOREVER);
     if (channel <= 100) {
-        nrf_radio_frequency_set(NRF_RADIO, 2400+channel);
+        current_channel = channel;
+        if (test_mode != esbTestModeIdle) {
+            test_mode_restart_locked();
+        } else {
+            nrf_radio_frequency_set(NRF_RADIO, 2400 + channel);
+        }
+    } else if (test_mode != esbTestModeIdle) {
+        test_mode_stop_locked();
     }
     k_mutex_unlock(&radio_busy);
 }
@@ -256,11 +429,14 @@ void esb_set_bitrate(esbBitrate_t bitrate)
     k_mutex_lock(&radio_busy, K_FOREVER);
     switch(bitrate) {
         case radioBitrate1M:
-            nrf_radio_mode_set(NRF_RADIO, RADIO_MODE_MODE_Nrf_1Mbit);
+            current_normal_radio_mode = NRF_RADIO_MODE_NRF_1MBIT;
             break;
         case radioBitrate2M:
-            nrf_radio_mode_set(NRF_RADIO, RADIO_MODE_MODE_Nrf_2Mbit);
+            current_normal_radio_mode = NRF_RADIO_MODE_NRF_2MBIT;
             break;
+    }
+    if (test_mode == esbTestModeIdle) {
+        nrf_radio_mode_set(NRF_RADIO, current_normal_radio_mode);
     }
     k_mutex_unlock(&radio_busy);
 }
@@ -314,7 +490,11 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
         return false;
     }
 
-    if (continuous_carrier_enabled || sniffer_active) {
+    if (test_mode != esbTestModeIdle) {
+        return false;
+    }
+
+    if (sniffer_active) {
         return false;
     }
 
@@ -429,37 +609,138 @@ bool esb_send_packet(struct esbPacket_s *packet, struct esbPacket_s * ack, uint8
     }
 }
 
+static void radio_dtx_set(uint8_t default_tx)
+{
+#if defined(RADIO_MODECNF0_RU_Msk)
+    nrf_radio_modecnf0_set(NRF_RADIO, nrf_radio_modecnf0_ru_get(NRF_RADIO), default_tx);
+#elif defined(RADIO_MODECNF0_DTX_Msk)
+    NRF_RADIO->MODECNF0 = (NRF_RADIO->MODECNF0 & ~RADIO_MODECNF0_DTX_Msk) |
+                          (((uint32_t)default_tx) << RADIO_MODECNF0_DTX_Pos);
+#else
+    ARG_UNUSED(default_tx);
+#endif
+}
+
+static void restore_normal_radio_config_locked(void)
+{
+    nrf_radio_int_disable(NRF_RADIO, 0xffffffffUL);
+    nrf_radio_shorts_set(NRF_RADIO,
+        NRF_RADIO_SHORT_ADDRESS_RSSISTART_MASK |
+        NRF_RADIO_SHORT_DISABLED_RSSISTOP_MASK);
+
+    nrf_radio_packet_conf_t radioConfig = {0,};
+    radioConfig.lflen = 6;
+    radioConfig.s0len = 0;
+    radioConfig.s1len = 3;
+    radioConfig.maxlen = 32;
+    radioConfig.statlen = 0;
+    radioConfig.balen = 4;
+    radioConfig.big_endian = true;
+    radioConfig.whiteen = false;
+    nrf_radio_packet_configure(NRF_RADIO, &radioConfig);
+
+    nrf_radio_crc_configure(NRF_RADIO, 2, NRF_RADIO_CRC_ADDR_INCLUDE, 0x11021UL);
+    nrf_radio_crcinit_set(NRF_RADIO, 0xfffful);
+    nrf_radio_rxaddresses_set(NRF_RADIO, 0x01u);
+    nrf_radio_mode_set(NRF_RADIO, current_normal_radio_mode);
+#if defined(RADIO_MODECNF0_DTX_B1)
+    radio_dtx_set(RADIO_MODECNF0_DTX_B1);
+#endif
+}
+
+static void configure_test_modulated_packet_locked(void)
+{
+    test_tx_packet[0] = sizeof(test_tx_packet) - 1;
+    memset(&test_tx_packet[1], 0xf0, sizeof(test_tx_packet) - 1);
+
+    nrf_radio_packet_conf_t radioConfig = {0,};
+    radioConfig.lflen = 8;
+    radioConfig.s0len = 0;
+    radioConfig.s1len = 0;
+    radioConfig.maxlen = sizeof(test_tx_packet) - 1;
+    radioConfig.statlen = 0;
+    radioConfig.balen = 4;
+    radioConfig.big_endian = true;
+    radioConfig.whiteen = true;
+    nrf_radio_packet_configure(NRF_RADIO, &radioConfig);
+
+    nrf_radio_crc_configure(NRF_RADIO, 0, NRF_RADIO_CRC_ADDR_INCLUDE, 0);
+#if defined(RADIO_MODECNF0_DTX_B1)
+    radio_dtx_set(RADIO_MODECNF0_DTX_B1);
+#endif
+    nrf_radio_packetptr_set(NRF_RADIO, test_tx_packet);
+}
+
 bool esb_set_continuous_carrier(bool enable) {
-    if (!isInit) {
-        return false;
+    return esb_set_test_mode(enable ? esbTestModeUnmodulatedCarrier : esbTestModeIdle);
+}
+
+static void test_mode_stop_locked(void)
+{
+    nrf_radio_int_disable(NRF_RADIO, 0xffffffffUL);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+    k_sleep(K_USEC(200));
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+    fem_txen_set(false);
+    restore_normal_radio_config_locked();
+}
+
+static void test_mode_start_locked(void)
+{
+    nrf_radio_int_disable(NRF_RADIO, 0xffffffffUL);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
+    k_sleep(K_USEC(200));
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_DISABLED);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_READY);
+    nrf_radio_event_clear(NRF_RADIO, NRF_RADIO_EVENT_END);
+
+    if (current_channel <= 100) {
+        nrf_radio_frequency_set(NRF_RADIO, 2400 + current_channel);
     }
+    nrf_radio_txpower_set(NRF_RADIO, (nrf_radio_txpower_t)current_nrf_tx_power);
+    fem_set_power(test_pa_power);
+    fem_rxen_set(false);
+    fem_txen_set(true);
 
-    if (sniffer_active) {
-        return false;
-    }
-
-    if (enable == continuous_carrier_enabled) {
-        return false;
-    }
-
-    k_mutex_lock(&radio_busy, K_FOREVER);
-    if (enable) {
-        fem_txen_set(true);
-
+    if (test_mode == esbTestModeUnmodulatedCarrier) {
+        nrf_radio_int_disable(NRF_RADIO, 0xffffffffUL);
+        nrf_radio_shorts_set(NRF_RADIO, 0);
+#if defined(RADIO_MODECNF0_DTX_Center)
+        radio_dtx_set(RADIO_MODECNF0_DTX_Center);
+#endif
         nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
-
-
-    } else {
-        nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_DISABLE);
-
-        fem_txen_set(false);
+        return;
     }
 
+    if (test_mode == esbTestModeModulatedCarrier1M) {
+        nrf_radio_mode_set(NRF_RADIO, NRF_RADIO_MODE_NRF_1MBIT);
+    } else if (test_mode == esbTestModeModulatedCarrier2M) {
+        nrf_radio_mode_set(NRF_RADIO, NRF_RADIO_MODE_NRF_2MBIT);
+    } else {
+        fem_txen_set(false);
+        return;
+    }
 
-    continuous_carrier_enabled = enable;
+    configure_test_modulated_packet_locked();
+    nrf_radio_shorts_set(NRF_RADIO, RADIO_SHORTS_READY_START_Msk);
+    nrf_radio_int_enable(NRF_RADIO, NRF_RADIO_INT_END_MASK);
+    nrf_radio_task_trigger(NRF_RADIO, NRF_RADIO_TASK_TXEN);
+}
 
-    k_mutex_unlock(&radio_busy);
-    return true;
+static void test_mode_restart_locked(void)
+{
+    if (test_mode == esbTestModeIdle) {
+        return;
+    }
+
+    esbTestMode_t mode = test_mode;
+
+    test_mode_stop_locked();
+    test_mode = mode;
+    if (current_channel <= 100) {
+        test_mode_start_locked();
+    }
 }
 
 void esb_set_address_pipe1(uint8_t address[5])
@@ -480,6 +761,11 @@ void esb_sniffer_start(esb_sniffer_rx_cb_t cb)
     }
 
     k_mutex_lock(&radio_busy, K_FOREVER);
+
+    if (test_mode != esbTestModeIdle) {
+        test_mode_stop_locked();
+        test_mode = esbTestModeIdle;
+    }
 
     sniffer_active = true;
     sniffer_callback = cb;
