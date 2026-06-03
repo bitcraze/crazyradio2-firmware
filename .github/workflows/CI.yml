@@ -1,4 +1,4 @@
-# Build the project using the Bitcraze builder docker image
+# Build the project using Zephyr directly
 name: CI
 
 on:
