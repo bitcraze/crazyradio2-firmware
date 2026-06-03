@@ -12,10 +12,6 @@ jobs:
   release:
     name: Create draft GitHub release
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # Todo: add back "crazyradio2" when new protocol is reimplemented
-        mode: [crazyradio2-CRPA-emulation]
 
     steps:
     - uses: actions/checkout@v3
@@ -37,7 +33,7 @@ jobs:
         just fetch-zephyr
         just build
 
-        cp build/zephyr/crazyradio2.uf2 ${{ matrix.mode }}-${{ github.ref_name }}.uf2
+        cp build/zephyr/crazyradio2.uf2 crazyradio2-${{ github.ref_name }}.uf2
 
     - name: Create draft release
       uses: softprops/action-gh-release@v2
@@ -47,4 +43,4 @@ jobs:
         draft: true
         prerelease: true
         fail_on_unmatched_files: true
-        files: ${{ matrix.mode }}-${{ github.ref_name }}.uf2
+        files: crazyradio2-${{ github.ref_name }}.uf2
