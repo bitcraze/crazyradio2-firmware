@@ -8,7 +8,7 @@ dependencies = [
     "rust-just",
     "fzf-bin",
     "west",
-    "cmake",
+    "cmake<4",
     "ninja",
     "pyelftools>=0.32",
 ]
