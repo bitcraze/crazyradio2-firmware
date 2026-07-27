@@ -52,7 +52,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cmake" },
+    { name = "cmake", specifier = "<4.4" },
     { name = "fzf-bin" },
     { name = "ninja" },
     { name = "pyelftools", specifier = ">=0.32" },

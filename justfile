@@ -36,7 +36,7 @@ fetch-zephyr: west-exists
 # Fetch python dependencies
 fetch-python-dep:
     uv pip install -r zephyr/scripts/requirements.txt
-    uv pip install cmake ninja
+    uv pip install 'cmake<4.4' ninja
 
 # Prepare system to build the project. Alias for [fetch-zephyr fetch-zephyr-sdk fetch-python-dep]
 prepare-system:
