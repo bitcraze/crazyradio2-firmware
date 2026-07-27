@@ -8,7 +8,9 @@ dependencies = [
     "rust-just",
     "fzf-bin",
     "west",
-    "cmake",
+    # CMake 4.4 rejects the unquoted empty-variable if() in Zephyr 4.2.0's
+    # FindZephyr-sdk.cmake. 4.3 and older are fine.
+    "cmake<4.4",
     "ninja",
     "pyelftools>=0.32",
 ]
