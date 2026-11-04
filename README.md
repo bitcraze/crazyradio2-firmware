@@ -13,8 +13,9 @@ Check out the [Bitcraze crazyradio2-firmware documentation](https://www.bitcraze
 
 
 ## Contribute
+Before you open a pull request, please read our [General guidelines for code contributions](https://www.bitcraze.io/development/contribute/general-guidelines/).
 
-Go to the [contribute page](https://www.bitcraze.io/contribute/) on our website to learn more.
+For other ways to contribute, see the [contribute page](https://www.bitcraze.io/development/contribute/).
 
 
 ## License
