@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
       with:
         submodules: true
 
@@ -26,9 +26,9 @@ jobs:
         sudo apt-get install -y --no-install-recommends pkg-config python3-dev libusb-1.0-0-dev libudev-dev
 
     - name: install just
-      uses: extractions/setup-just@v3
+      uses: extractions/setup-just@v4
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@v10.3.3
 
     - name: Build
       run: |
@@ -43,7 +43,7 @@ jobs:
         cp build/zephyr/crazyradio2.uf2 crazyradio2-${{ github.ref_name }}.uf2
 
     - name: Create draft release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
