@@ -4,9 +4,26 @@ help:
 
 sdk_version := "0.17.2"
 
-# Fetch system dependencies with apt or dnf. Works on fedora:43 and ubuntu:24 official containers.
+# Fetch system dependencies with apt or dnf. Works on fedora:43, ubuntu:24.04 and ubuntu:26.04 official containers.
 fetch-system-dep:
-	grep "NAME=\"Fedora Linux\"" < /etc/os-release && sudo dnf install -y uv just libusb1-devel libudev-devel git gcc
+	#!/usr/bin/env bash
+	set -euo pipefail
+	. /etc/os-release
+	# Official containers run as root and do not ship sudo
+	SUDO=$([ "$(id -u)" -eq 0 ] || echo sudo)
+	case "$ID" in
+	    fedora)
+	        $SUDO dnf install -y uv just libusb1-devel libudev-devel git gcc pkgconf python3-devel curl xz
+	        ;;
+	    ubuntu|debian)
+	        $SUDO apt-get update
+	        $SUDO apt-get install -y git gcc pkg-config python3-dev libusb-1.0-0-dev libudev-dev curl xz-utils
+	        ;;
+	    *)
+	        echo "Unsupported distribution '$ID', please install the dependencies manually"
+	        exit 1
+	        ;;
+	esac
 	uv python install 3.14
 
 
