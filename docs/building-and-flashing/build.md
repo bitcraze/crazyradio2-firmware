@@ -24,6 +24,15 @@ brew install uv
 
 The project also makes use of `just` and `cmake` as native dependencies, they are part of the UV venv but they can also be installed on the host with the package manager (apt or brew)
 
+Some of Zephyr's Python dependencies (for example `hidapi`) do not ship prebuilt packages for all Python versions and are then compiled at install time. This requires a C compiler, `pkg-config` and the Python, libusb and libudev development headers. On Ubuntu:
+```
+apt install gcc pkg-config python3-dev libusb-1.0-0-dev libudev-dev
+```
+
+On Ubuntu and Fedora, `just fetch-system-dep` installs all of these.
+
+The project is tested on the last two Ubuntu LTS releases (24.04 and 26.04).
+
 ## Entering build environment
 
 Zephyr is built with `west` which is a Python tool and uses many Python dependencies. Hence it is advised to work in a python venv.

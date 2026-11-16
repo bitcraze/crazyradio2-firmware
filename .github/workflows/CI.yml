@@ -13,10 +13,14 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # The weekly (and manually triggered) build checks that we still support
+    # the last two Ubuntu LTS releases. Push and PR builds only use the latest.
+    runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
+        os: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["ubuntu-24.04", "ubuntu-latest"]' || '["ubuntu-latest"]') }}
         # Todo: add back "crazyradio2" when new protocol is reimplemented
         mode: [crazyradio2-CRPA-emulation]
 
@@ -24,6 +28,13 @@ jobs:
     - uses: actions/checkout@v3
       with:
         submodules: true
+
+    # Some Python dependencies (ie. hidapi) have no prebuilt wheel for all
+    # Python versions and are built from source against Python/libusb/libudev
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends pkg-config python3-dev libusb-1.0-0-dev libudev-dev
 
     - name: install just
       uses: extractions/setup-just@v3
@@ -46,6 +57,7 @@ jobs:
         cp build/zephyr/crazyradio2.hex ${{ matrix.mode }}.hex
 
     - uses: actions/upload-artifact@v4
+      if: matrix.os == 'ubuntu-latest'
       with:
         name: ${{ matrix.mode }}
         path: |

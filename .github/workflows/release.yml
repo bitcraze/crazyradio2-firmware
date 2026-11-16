@@ -18,6 +18,13 @@ jobs:
       with:
         submodules: true
 
+    # Some Python dependencies (ie. hidapi) have no prebuilt wheel for all
+    # Python versions and are built from source against Python/libusb/libudev
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends pkg-config python3-dev libusb-1.0-0-dev libudev-dev
+
     - name: install just
       uses: extractions/setup-just@v3
     - name: Install uv
